@@ -24,5 +24,14 @@ export function useEntries() {
     setEntries((prev) => prev.filter((e) => e.key !== key))
   }
 
-  return { entries, saveEntry, removeEntry }
+  // Insere/atualiza os lançamentos por key (merge — não apaga os existentes).
+  async function importEntries(list) {
+    for (const entry of list) {
+      await putEntry(entry)
+    }
+    const stored = await getAllEntries()
+    setEntries([...stored].sort(byPeriodDesc))
+  }
+
+  return { entries, saveEntry, removeEntry, importEntries }
 }

@@ -8,13 +8,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { BackupButtons } from '@/components/backup-buttons'
 import { EntriesTable } from '@/components/entries-table'
 import { EntryForm } from '@/components/entry-form'
+import { Toaster } from '@/components/ui/sonner'
 import { useEntries } from '@/hooks/use-entries'
 import { buildMonthlyGroups } from '@/lib/grouping'
 
 function App() {
-  const { entries, saveEntry, removeEntry } = useEntries()
+  const { entries, saveEntry, removeEntry, importEntries } = useEntries()
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
 
@@ -49,12 +51,15 @@ function App() {
   return (
     <div className="min-h-screen bg-muted/40 text-foreground">
       <main className="mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Lançamentos</h1>
-          <Button onClick={openNew}>
-            <Plus className="size-4" />
-            Novo lançamento
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <BackupButtons entries={entries} onImport={importEntries} />
+            <Button onClick={openNew}>
+              <Plus className="size-4" />
+              Novo lançamento
+            </Button>
+          </div>
         </div>
 
         <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : closeModal())}>
@@ -84,6 +89,8 @@ function App() {
           onRemove={handleRemove}
         />
       </main>
+
+      <Toaster richColors position="top-center" />
     </div>
   )
 }
