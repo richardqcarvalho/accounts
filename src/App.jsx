@@ -26,6 +26,7 @@ function App() {
   const [valueCents, setValueCents] = useState('')
   const [month, setMonth] = useState(currentMonth)
   const [year, setYear] = useState(String(currentYear))
+  const [isExternal, setIsExternal] = useState(false)
   const [entries, setEntries] = useState([])
 
   useEffect(() => {
@@ -47,6 +48,7 @@ function App() {
       cents: Number(valueCents),
       month: Number(month),
       year: Number(year),
+      market: isExternal ? 'external' : 'internal',
     }
 
     await putEntry(entry)
@@ -58,6 +60,7 @@ function App() {
     setValueCents('')
     setMonth(currentMonth)
     setYear(String(currentYear))
+    setIsExternal(false)
   }
 
   async function handleRemove(key) {
@@ -131,6 +134,16 @@ function App() {
             </select>
           </label>
 
+          <label className="flex items-center gap-2 py-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={isExternal}
+              onChange={(e) => setIsExternal(e.target.checked)}
+            />
+            Mercado externo
+          </label>
+
           <button
             type="submit"
             className="rounded bg-green-700 px-5 py-2 text-base text-white hover:bg-green-800"
@@ -169,7 +182,9 @@ function App() {
                     </tr>
                     {group.entries.map((entry) => (
                       <tr key={entry.key} className="text-gray-600">
-                        <td className={cellClass} colSpan={2}></td>
+                        <td className={`${cellClass} pl-6`} colSpan={2}>
+                          {entry.market === 'external' ? 'Externo' : ''}
+                        </td>
                         <td className={`${cellClass} text-right`}>
                           {formatBRL(entry.cents)}
                         </td>
