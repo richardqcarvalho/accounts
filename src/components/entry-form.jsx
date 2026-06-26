@@ -135,6 +135,7 @@ export function EntryForm({ editing, onSubmit, onCancel }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="tax">Imposto</SelectItem>
+                <SelectItem value="fee">Taxa</SelectItem>
                 <SelectItem value="expense">Outras despesas</SelectItem>
               </SelectContent>
             </Select>

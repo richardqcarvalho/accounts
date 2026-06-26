@@ -22,13 +22,18 @@ import { EntryRow } from '@/components/entry-row'
 import { TaxRow } from '@/components/tax-row'
 import { formatBRL, formatPercent } from '@/lib/format'
 
-// Sub-cabeçalho que separa as seções da tabela.
-function SectionRow({ label }) {
+// Cabeçalho de seção da tabela. `nested` indica uma subseção (recuada e mais
+// leve, sem barra de fundo).
+function SectionRow({ label, nested }) {
   return (
     <TableRow className="hover:bg-transparent">
       <TableCell
         colSpan={3}
-        className="bg-muted/30 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        className={
+          nested
+            ? 'py-1.5 pl-6 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70'
+            : 'bg-muted/30 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'
+        }
       >
         {label}
       </TableCell>
@@ -57,8 +62,10 @@ function DetailTable({ children }) {
   )
 }
 
-// Tabela do mês selecionado: lançamentos manuais (editáveis) separados do
-// detalhamento de impostos calculados. Total e Líquido ficam nos cards de cima.
+// Tabela do mês selecionado, em uma única visão: seção de Faturamentos e seção
+// de Descontos (subdividida em Impostos, Taxas e Outras despesas). As linhas
+// calculadas são read-only; os lançamentos manuais são editáveis. Total e
+// Líquido ficam nos cards de cima.
 export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
   const { taxes } = group
   // Lançamento aguardando confirmação de exclusão (null = modal fechado).
@@ -83,9 +90,8 @@ export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
 
   return (
     <>
-      {/* Lançamentos: tudo que é digitado/editável. */}
       <DetailTable>
-        <SectionRow label="Entradas" />
+        <SectionRow label="Faturamentos" />
         {group.revenues.map((entry) =>
           renderEntry(
             entry,
@@ -95,24 +101,9 @@ export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
           ),
         )}
 
-        {group.extraTaxItems.length > 0 && (
-          <SectionRow label="Descontos · impostos" />
-        )}
-        {group.extraTaxItems.map((entry) =>
-          renderEntry(entry, entry.description || 'Desconto'),
-        )}
+        <SectionRow label="Descontos" />
 
-        {group.extraExpenseItems.length > 0 && (
-          <SectionRow label="Descontos · outras despesas" />
-        )}
-        {group.extraExpenseItems.map((entry) =>
-          renderEntry(entry, entry.description || 'Desconto'),
-        )}
-      </DetailTable>
-
-      {/* Números calculados (somente leitura). */}
-      <DetailTable>
-        <SectionRow label="Impostos" />
+        <SectionRow label="Impostos" nested />
         <TaxRow label="Pró-labore (28%)" reais={taxes.proLabore} />
         <TaxRow label="INSS" reais={taxes.inss} />
         <TaxRow label="IRRF" reais={taxes.irrf} />
@@ -130,9 +121,20 @@ export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
         )}
         <TaxRow label="DARF unificado" reais={taxes.darf} />
         <TaxRow label="DAS Simples" reais={taxes.das} />
+        {group.extraTaxItems.map((entry) =>
+          renderEntry(entry, entry.description || 'Desconto'),
+        )}
 
-        <SectionRow label="Outras despesas" />
+        {group.extraFeeItems.length > 0 && <SectionRow label="Taxas" nested />}
+        {group.extraFeeItems.map((entry) =>
+          renderEntry(entry, entry.description || 'Desconto'),
+        )}
+
+        <SectionRow label="Outras despesas" nested />
         <TaxRow label="Contabilizei" reais={taxes.accounting} />
+        {group.extraExpenseItems.map((entry) =>
+          renderEntry(entry, entry.description || 'Desconto'),
+        )}
       </DetailTable>
 
       <AlertDialog

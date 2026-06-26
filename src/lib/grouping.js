@@ -18,8 +18,10 @@ export function buildMonthlyGroups(entries) {
         externalCents: 0,
         revenues: [],
         extraTaxItems: [], // descontos marcados como imposto
+        extraFeeItems: [], // descontos marcados como taxa
         extraExpenseItems: [], // descontos marcados como outras despesas
         extraTaxCents: 0,
+        extraFeeCents: 0,
         extraExpenseCents: 0,
       }
       groups.push(group)
@@ -30,6 +32,9 @@ export function buildMonthlyGroups(entries) {
       if (entry.category === 'expense') {
         group.extraExpenseItems.push(entry)
         group.extraExpenseCents += entry.cents
+      } else if (entry.category === 'fee') {
+        group.extraFeeItems.push(entry)
+        group.extraFeeCents += entry.cents
       } else {
         group.extraTaxItems.push(entry)
         group.extraTaxCents += entry.cents
@@ -62,6 +67,7 @@ export function buildMonthlyGroups(entries) {
       rbt12Internal: rbt12ForMonth(ci, internal, internalByCal),
       rbt12External: rbt12ForMonth(ci, external, externalByCal),
       extraTax: group.extraTaxCents / 100,
+      extraFee: group.extraFeeCents / 100,
       extraExpense: group.extraExpenseCents / 100,
     })
   }
