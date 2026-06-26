@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { deleteEntry, getAllEntries, putEntry } from './db'
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -25,23 +26,35 @@ function App() {
   const [year, setYear] = useState('')
   const [entries, setEntries] = useState([])
 
+  useEffect(() => {
+    getAllEntries().then((stored) =>
+      setEntries(stored.sort((a, b) => a.year - b.year || a.month - b.month)),
+    )
+  }, [])
+
   function handleValueChange(e) {
     setValueCents(e.target.value.replace(/\D/g, ''))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     if (Number(valueCents) <= 0 || month === '' || year === '') return
 
+    const key = `${year}-${month}`
+    const existing = entries.find((entry) => entry.key === key)
     const entry = {
-      id: crypto.randomUUID(),
-      cents: Number(valueCents),
+      key,
+      cents: (existing?.cents ?? 0) + Number(valueCents),
       month: Number(month),
       year: Number(year),
     }
 
+    await putEntry(entry)
+
     setEntries((prev) =>
-      [...prev, entry].sort((a, b) => a.year - b.year || a.month - b.month),
+      [...prev.filter((e) => e.key !== key), entry].sort(
+        (a, b) => a.year - b.year || a.month - b.month,
+      ),
     )
 
     setValueCents('')
@@ -49,8 +62,9 @@ function App() {
     setYear('')
   }
 
-  function handleRemove(id) {
-    setEntries((prev) => prev.filter((entry) => entry.id !== id))
+  async function handleRemove(key) {
+    await deleteEntry(key)
+    setEntries((prev) => prev.filter((entry) => entry.key !== key))
   }
 
   const total = entries.reduce((sum, entry) => sum + entry.cents, 0)
@@ -132,7 +146,7 @@ function App() {
                 </tr>
               ) : (
                 entries.map((entry) => (
-                  <tr key={entry.id}>
+                  <tr key={entry.key}>
                     <td className={cellClass}>{MONTHS[entry.month]}</td>
                     <td className={cellClass}>{entry.year}</td>
                     <td className={`${cellClass} text-right`}>
@@ -142,7 +156,7 @@ function App() {
                       <button
                         type="button"
                         className="text-xl leading-none text-red-700 hover:text-red-900"
-                        onClick={() => handleRemove(entry.id)}
+                        onClick={() => handleRemove(entry.key)}
                         aria-label="Remover"
                       >
                         ×
