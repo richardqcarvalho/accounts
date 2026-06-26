@@ -6,7 +6,9 @@ const MONTHS = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ]
 
-const currentYear = new Date().getFullYear()
+const now = new Date()
+const currentMonth = String(now.getMonth())
+const currentYear = now.getFullYear()
 const YEARS = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
 
 const fieldClass = 'flex flex-1 basis-32 flex-col gap-1 text-sm'
@@ -22,8 +24,8 @@ function formatBRL(cents) {
 
 function App() {
   const [valueCents, setValueCents] = useState('')
-  const [month, setMonth] = useState('')
-  const [year, setYear] = useState('')
+  const [month, setMonth] = useState(currentMonth)
+  const [year, setYear] = useState(String(currentYear))
   const [entries, setEntries] = useState([])
 
   useEffect(() => {
@@ -58,8 +60,8 @@ function App() {
     )
 
     setValueCents('')
-    setMonth('')
-    setYear('')
+    setMonth(currentMonth)
+    setYear(String(currentYear))
   }
 
   async function handleRemove(key) {
