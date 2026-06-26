@@ -1,6 +1,6 @@
-// Brazilian tax tables — values effective for 2026.
-// These change at most once a year; update this single file and bump TAX_YEAR.
-// Sources:
+// Tabelas de impostos brasileiras — valores vigentes em 2026.
+// Mudam no máximo uma vez por ano; atualize este arquivo e ajuste TAX_YEAR.
+// Fontes:
 //   INSS teto 2026: gov.br/inss, contabilizei.com.br/contabilidade-online/tabela-inss
 //   IRRF 2026:      gov.br/receitafederal/.../tabelas/2026 (isenção até R$ 5.000 + redutor)
 //   Anexo III 2026: contabilizei.com.br/contabilidade-online/anexo-3-simples-nacional

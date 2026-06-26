@@ -1,6 +1,6 @@
-import { ANEXO_III, CONTABILIDADE_MENSAL, INSS, IRRF } from './taxTables'
+import { ANEXO_III, CONTABILIDADE_MENSAL, INSS, IRRF } from '@/lib/tax-tables'
 
-// All amounts here are in reais (not cents).
+// Todos os valores aqui são em reais (não em centavos).
 
 // INSS sobre o pró-labore: 11% limitado ao teto.
 export function calcINSS(proLabore) {
