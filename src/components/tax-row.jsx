@@ -1,5 +1,5 @@
 import { TableCell, TableRow } from '@/components/ui/table'
-import { formatBRL } from '@/lib/format'
+import { formatReais } from '@/lib/format'
 
 // Linha de imposto calculado (somente leitura). `strong` destaca o total e
 // `accent` o líquido.
@@ -12,13 +12,11 @@ export function TaxRow({ label, reais, strong, accent }) {
 
   return (
     <TableRow className={`text-sm ${tone}`}>
-      <TableCell className="pl-8" colSpan={2}>
-        {label}
+      <TableCell>{label}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatReais(reais)}
       </TableCell>
-      <TableCell className="text-right">
-        {formatBRL(Math.round(reais * 100))}
-      </TableCell>
-      <TableCell />
+      <TableCell className="w-0" />
     </TableRow>
   )
 }

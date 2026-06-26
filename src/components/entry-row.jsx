@@ -3,23 +3,15 @@ import { Button } from '@/components/ui/button'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { formatBRL } from '@/lib/format'
 
-// Linha editável de um lançamento (faturamento ou imposto extra). `small`
-// aplica o recuo/tamanho usado na seção de impostos.
-export function EntryRow({ label, entry, editing, onEdit, onRemove, small }) {
+// Linha editável de um lançamento (faturamento ou imposto extra).
+export function EntryRow({ label, entry, editing, onEdit, onRemove }) {
   return (
-    <TableRow
-      className={editing ? 'bg-yellow-50 dark:bg-yellow-500/10' : undefined}
-    >
-      <TableCell
-        className={`text-muted-foreground ${small ? 'pl-8 text-sm' : 'pl-6'}`}
-        colSpan={2}
-      >
-        {label}
-      </TableCell>
-      <TableCell className={`text-right ${small ? 'text-sm' : ''}`}>
+    <TableRow className={editing ? 'bg-yellow-50 dark:bg-yellow-500/10' : undefined}>
+      <TableCell className="text-muted-foreground">{label}</TableCell>
+      <TableCell className="text-right tabular-nums">
         {formatBRL(entry.cents)}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="w-0 text-right">
         <div className="flex justify-end gap-1">
           <Button
             type="button"

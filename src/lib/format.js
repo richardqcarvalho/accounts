@@ -8,3 +8,8 @@ export function formatBRL(cents) {
 export function formatPercent(rate) {
   return `${(rate * 100).toFixed(2).replace('.', ',')}%`
 }
+
+// Formata um valor em reais (não em centavos).
+export function formatReais(reais) {
+  return formatBRL(Math.round(reais * 100))
+}
