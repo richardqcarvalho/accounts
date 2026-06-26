@@ -84,15 +84,18 @@ export function calcSimples({ internal, external, rbt12Internal, rbt12External }
   return { internalRate, externalRate, dasInternal, dasExternal }
 }
 
-// Conjunto de impostos do mês a partir do faturamento interno/externo, dos RBT12
-// de cada mercado e dos impostos extras avulsos lançados no mês. Inclui a taxa
-// fixa de contabilidade no total.
+// Conjunto de impostos e despesas do mês a partir do faturamento
+// interno/externo, dos RBT12 de cada mercado e dos descontos avulsos lançados no
+// mês. Os descontos podem contar como imposto (`extraTax`) ou como outra despesa
+// (`extraExpense`). O líquido desconta tudo; a divisão só muda como os totais são
+// apresentados (cards de Impostos × Outras despesas).
 export function monthlyTaxes({
   internal,
   external,
   rbt12Internal,
   rbt12External,
   extraTax = 0,
+  extraExpense = 0,
 }) {
   const revenue = internal + external
   const proLabore = revenue * ANEXO_III.proLaboreRate
@@ -103,7 +106,12 @@ export function monthlyTaxes({
   const simples = calcSimples({ internal, external, rbt12Internal, rbt12External })
   const das = simples.dasInternal + simples.dasExternal
   const accounting = CONTABILIDADE_MENSAL
-  const total = darf + das + accounting + extraTax
+
+  // Impostos: Simples (DARF + DAS) + descontos marcados como imposto.
+  const taxesTotal = darf + das + extraTax
+  // Outras despesas: contabilidade fixa + descontos marcados como despesa.
+  const otherExpenses = accounting + extraExpense
+  const total = taxesTotal + otherExpenses
   const net = revenue - total // líquido: o que sobra do faturamento
 
   return {
@@ -118,6 +126,9 @@ export function monthlyTaxes({
     das,
     accounting,
     extraTax,
+    extraExpense,
+    taxesTotal,
+    otherExpenses,
     total,
     net,
   }

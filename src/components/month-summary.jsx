@@ -6,12 +6,13 @@ import { cn } from '@/lib/utils'
 export function MonthSummary({ group }) {
   const items = [
     { label: 'Faturamento', value: formatBRL(group.cents) },
-    { label: 'Impostos', value: formatReais(group.taxes.total) },
+    { label: 'Impostos', value: formatReais(group.taxes.taxesTotal) },
+    { label: 'Outras despesas', value: formatReais(group.taxes.otherExpenses) },
     { label: 'Líquido', value: formatReais(group.taxes.net), accent: true },
   ]
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2">
       {items.map((item) => (
         <Card key={item.label}>
           <CardContent>

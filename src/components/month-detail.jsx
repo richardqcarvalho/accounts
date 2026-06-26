@@ -36,6 +36,27 @@ function SectionRow({ label }) {
   )
 }
 
+// Card com a tabela padrão (cabeçalho Item/Valor + coluna de ações). As linhas
+// vêm como children.
+function DetailTable({ children }) {
+  return (
+    <Card className="overflow-hidden p-0">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted hover:bg-muted">
+            <TableHead className="font-semibold text-foreground">Item</TableHead>
+            <TableHead className="text-right font-semibold text-foreground">
+              Valor
+            </TableHead>
+            <TableHead className="w-0" aria-label="Ações" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </Card>
+  )
+}
+
 // Tabela do mês selecionado: lançamentos manuais (editáveis) separados do
 // detalhamento de impostos calculados. Total e Líquido ficam nos cards de cima.
 export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
@@ -48,79 +69,71 @@ export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
     setPending(null)
   }
 
+  // Linha editável de lançamento; a exclusão passa pela confirmação.
+  const renderEntry = (entry, label) => (
+    <EntryRow
+      key={entry.key}
+      label={label}
+      entry={entry}
+      editing={entry.key === editingKey}
+      onEdit={onEdit}
+      onRemove={() => setPending({ key: entry.key, label, cents: entry.cents })}
+    />
+  )
+
   return (
     <>
-      <Card className="overflow-hidden p-0">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted hover:bg-muted">
-              <TableHead className="font-semibold text-foreground">
-                Item
-              </TableHead>
-              <TableHead className="text-right font-semibold text-foreground">
-                Valor
-              </TableHead>
-              <TableHead className="w-0" aria-label="Ações" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <SectionRow label="Lançamentos" />
-            {group.revenues.map((entry) => {
-              const label =
-                entry.market === 'external'
-                  ? 'Faturamento externo'
-                  : 'Faturamento interno'
-              return (
-                <EntryRow
-                  key={entry.key}
-                  label={label}
-                  entry={entry}
-                  editing={entry.key === editingKey}
-                  onEdit={onEdit}
-                  onRemove={() =>
-                    setPending({ key: entry.key, label, cents: entry.cents })
-                  }
-                />
-              )
-            })}
-            {group.extraTaxes.map((entry) => {
-              const label = entry.description || 'Imposto extra'
-              return (
-                <EntryRow
-                  key={entry.key}
-                  label={label}
-                  entry={entry}
-                  editing={entry.key === editingKey}
-                  onEdit={onEdit}
-                  onRemove={() =>
-                    setPending({ key: entry.key, label, cents: entry.cents })
-                  }
-                />
-              )
-            })}
+      {/* Lançamentos: tudo que é digitado/editável. */}
+      <DetailTable>
+        <SectionRow label="Entradas" />
+        {group.revenues.map((entry) =>
+          renderEntry(
+            entry,
+            entry.market === 'external'
+              ? 'Faturamento externo'
+              : 'Faturamento interno',
+          ),
+        )}
 
-            <SectionRow label="Impostos" />
-            <TaxRow label="Pró-labore (28%)" reais={taxes.proLabore} />
-            <TaxRow label="INSS" reais={taxes.inss} />
-            <TaxRow label="IRRF" reais={taxes.irrf} />
-            {group.internalCents > 0 && (
-              <TaxRow
-                label={`Simples interno (${formatPercent(taxes.internalRate)})`}
-                reais={taxes.dasInternal}
-              />
-            )}
-            {group.externalCents > 0 && (
-              <TaxRow
-                label={`Simples externo (${formatPercent(taxes.externalRate)})`}
-                reais={taxes.dasExternal}
-              />
-            )}
-            <TaxRow label="DARF" reais={taxes.darf} />
-            <TaxRow label="DAS" reais={taxes.das} />
-            <TaxRow label="Contabilizei" reais={taxes.accounting} />
-          </TableBody>
-        </Table>
-      </Card>
+        {group.extraTaxItems.length > 0 && (
+          <SectionRow label="Descontos · impostos" />
+        )}
+        {group.extraTaxItems.map((entry) =>
+          renderEntry(entry, entry.description || 'Desconto'),
+        )}
+
+        {group.extraExpenseItems.length > 0 && (
+          <SectionRow label="Descontos · outras despesas" />
+        )}
+        {group.extraExpenseItems.map((entry) =>
+          renderEntry(entry, entry.description || 'Desconto'),
+        )}
+      </DetailTable>
+
+      {/* Números calculados (somente leitura). */}
+      <DetailTable>
+        <SectionRow label="Impostos" />
+        <TaxRow label="Pró-labore (28%)" reais={taxes.proLabore} />
+        <TaxRow label="INSS" reais={taxes.inss} />
+        <TaxRow label="IRRF" reais={taxes.irrf} />
+        {group.internalCents > 0 && (
+          <TaxRow
+            label={`Simples interno (${formatPercent(taxes.internalRate)})`}
+            reais={taxes.dasInternal}
+          />
+        )}
+        {group.externalCents > 0 && (
+          <TaxRow
+            label={`Simples externo (${formatPercent(taxes.externalRate)})`}
+            reais={taxes.dasExternal}
+          />
+        )}
+        <TaxRow label="DARF unificado" reais={taxes.darf} />
+        <TaxRow label="DAS Simples" reais={taxes.das} />
+
+        <SectionRow label="Outras despesas" />
+        <TaxRow label="Contabilizei" reais={taxes.accounting} />
+      </DetailTable>
 
       <AlertDialog
         open={pending !== null}
