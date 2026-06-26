@@ -44,6 +44,8 @@ function App() {
   const [month, setMonth] = useState(currentMonth)
   const [year, setYear] = useState(String(currentYear))
   const [isExternal, setIsExternal] = useState(false)
+  const [kind, setKind] = useState('revenue')
+  const [description, setDescription] = useState('')
   const [editingKey, setEditingKey] = useState(null)
   const [entries, setEntries] = useState([])
 
@@ -62,6 +64,8 @@ function App() {
     setMonth(currentMonth)
     setYear(String(currentYear))
     setIsExternal(false)
+    setKind('revenue')
+    setDescription('')
     setEditingKey(null)
   }
 
@@ -74,7 +78,12 @@ function App() {
       cents: Number(valueCents),
       month: Number(month),
       year: Number(year),
-      market: isExternal ? 'external' : 'internal',
+      kind,
+    }
+    if (kind === 'tax') {
+      entry.description = description.trim()
+    } else {
+      entry.market = isExternal ? 'external' : 'internal'
     }
 
     await putEntry(entry)
@@ -88,9 +97,10 @@ function App() {
     if (editingKey) {
       resetForm()
     } else {
-      // Keep month/year so several entries can be added in a row.
+      // Mantém tipo/mês/ano para lançar vários seguidos.
       setValueCents('')
       setIsExternal(false)
+      setDescription('')
     }
   }
 
@@ -99,7 +109,9 @@ function App() {
     setValueCents(String(entry.cents))
     setMonth(String(entry.month))
     setYear(String(entry.year))
+    setKind(entry.kind ?? 'revenue')
     setIsExternal(entry.market === 'external')
+    setDescription(entry.description ?? '')
   }
 
   async function handleRemove(key) {
@@ -110,23 +122,33 @@ function App() {
 
   const groups = []
   for (const entry of entries) {
-    const external = entry.market === 'external' ? entry.cents : 0
-    const internal = entry.cents - external
     const last = groups[groups.length - 1]
+    let group
     if (last && last.month === entry.month && last.year === entry.year) {
-      last.entries.push(entry)
-      last.cents += entry.cents
-      last.internalCents += internal
-      last.externalCents += external
+      group = last
     } else {
-      groups.push({
+      group = {
         month: entry.month,
         year: entry.year,
-        cents: entry.cents,
-        internalCents: internal,
-        externalCents: external,
-        entries: [entry],
-      })
+        cents: 0,
+        internalCents: 0,
+        externalCents: 0,
+        revenues: [],
+        extraTaxes: [],
+        extraTaxCents: 0,
+      }
+      groups.push(group)
+    }
+
+    if (entry.kind === 'tax') {
+      group.extraTaxes.push(entry)
+      group.extraTaxCents += entry.cents
+    } else {
+      const external = entry.market === 'external' ? entry.cents : 0
+      group.revenues.push(entry)
+      group.cents += entry.cents
+      group.internalCents += entry.cents - external
+      group.externalCents += external
     }
   }
 
@@ -149,6 +171,7 @@ function App() {
       external,
       rbt12Internal: rbt12ForMonth(ci, internal, internalByCal),
       rbt12External: rbt12ForMonth(ci, external, externalByCal),
+      extraTax: group.extraTaxCents / 100,
     })
   }
 
@@ -158,6 +181,18 @@ function App() {
         <h1 className="mb-6 text-2xl font-semibold">Lançamentos</h1>
 
         <form className="mb-8 flex flex-wrap items-end gap-4" onSubmit={handleSubmit}>
+          <label className={fieldClass}>
+            Tipo
+            <select
+              className={controlClass}
+              value={kind}
+              onChange={(e) => setKind(e.target.value)}
+            >
+              <option value="revenue">Faturamento</option>
+              <option value="tax">Imposto extra</option>
+            </select>
+          </label>
+
           <label className={fieldClass}>
             Valor
             <input
@@ -202,15 +237,28 @@ function App() {
             </select>
           </label>
 
-          <label className="flex items-center gap-2 py-2 text-sm">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={isExternal}
-              onChange={(e) => setIsExternal(e.target.checked)}
-            />
-            Mercado externo
-          </label>
+          {kind === 'revenue' ? (
+            <label className="flex items-center gap-2 py-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={isExternal}
+                onChange={(e) => setIsExternal(e.target.checked)}
+              />
+              Mercado externo
+            </label>
+          ) : (
+            <label className={fieldClass}>
+              Descrição
+              <input
+                type="text"
+                placeholder="Ex: DARF complementar"
+                className={controlClass}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </label>
+          )}
 
           <button
             type="submit"
@@ -258,7 +306,7 @@ function App() {
                       </td>
                       <td className={cellClass}></td>
                     </tr>
-                    {group.entries.map((entry) => (
+                    {group.revenues.map((entry) => (
                       <tr
                         key={entry.key}
                         className={`text-gray-600 ${
@@ -320,7 +368,46 @@ function App() {
                         <TaxRow label="DARF" reais={group.taxes.darf} />
                         <TaxRow label="DAS" reais={group.taxes.das} />
                         <TaxRow
-                          label="Total de impostos"
+                          label="Contabilizei"
+                          reais={group.taxes.accounting}
+                        />
+                        {group.extraTaxes.map((entry) => (
+                          <tr
+                            key={entry.key}
+                            className={`text-sm text-gray-500 ${
+                              entry.key === editingKey ? 'bg-yellow-50' : ''
+                            }`}
+                          >
+                            <td className={`${cellClass} pl-8`} colSpan={2}>
+                              {entry.description || 'Imposto extra'}
+                            </td>
+                            <td className={`${cellClass} text-right`}>
+                              {formatBRL(entry.cents)}
+                            </td>
+                            <td className={`${cellClass} text-right`}>
+                              <div className="flex justify-end gap-3">
+                                <button
+                                  type="button"
+                                  className="leading-none text-blue-700 hover:text-blue-900"
+                                  onClick={() => handleEdit(entry)}
+                                  aria-label="Editar"
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xl leading-none text-red-700 hover:text-red-900"
+                                  onClick={() => handleRemove(entry.key)}
+                                  aria-label="Remover"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        <TaxRow
+                          label="Total"
                           reais={group.taxes.total}
                           strong
                         />

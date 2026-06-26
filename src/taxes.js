@@ -1,4 +1,4 @@
-import { ANEXO_III, INSS, IRRF } from './taxTables'
+import { ANEXO_III, CONTABILIDADE_MENSAL, INSS, IRRF } from './taxTables'
 
 // All amounts here are in reais (not cents).
 
@@ -84,9 +84,16 @@ export function calcSimples({ internal, external, rbt12Internal, rbt12External }
   return { internalRate, externalRate, dasInternal, dasExternal }
 }
 
-// Conjunto de impostos do mês a partir do faturamento interno/externo e dos
-// RBT12 de cada mercado.
-export function monthlyTaxes({ internal, external, rbt12Internal, rbt12External }) {
+// Conjunto de impostos do mês a partir do faturamento interno/externo, dos RBT12
+// de cada mercado e dos impostos extras avulsos lançados no mês. Inclui a taxa
+// fixa de contabilidade no total.
+export function monthlyTaxes({
+  internal,
+  external,
+  rbt12Internal,
+  rbt12External,
+  extraTax = 0,
+}) {
   const revenue = internal + external
   const proLabore = revenue * ANEXO_III.proLaboreRate
   const inss = calcINSS(proLabore)
@@ -95,6 +102,7 @@ export function monthlyTaxes({ internal, external, rbt12Internal, rbt12External 
 
   const simples = calcSimples({ internal, external, rbt12Internal, rbt12External })
   const das = simples.dasInternal + simples.dasExternal
+  const accounting = CONTABILIDADE_MENSAL
 
   return {
     proLabore,
@@ -106,6 +114,8 @@ export function monthlyTaxes({ internal, external, rbt12Internal, rbt12External 
     dasInternal: simples.dasInternal,
     dasExternal: simples.dasExternal,
     das,
-    total: darf + das,
+    accounting,
+    extraTax,
+    total: darf + das + accounting + extraTax,
   }
 }

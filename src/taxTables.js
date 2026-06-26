@@ -8,6 +8,10 @@
 
 export const TAX_YEAR = 2026
 
+// Mensalidade do serviço de contabilidade (plano padrão da Contabilizei).
+// Taxa fixa cobrada todo mês — ajuste conforme o seu plano.
+export const CONTABILIDADE_MENSAL = 195
+
 // Contribuição do sócio sobre o pró-labore: alíquota fixa de 11%, limitada ao teto.
 export const INSS = {
   rate: 0.11,
