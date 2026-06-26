@@ -27,6 +27,7 @@ function App() {
   const [month, setMonth] = useState(currentMonth)
   const [year, setYear] = useState(String(currentYear))
   const [isExternal, setIsExternal] = useState(false)
+  const [editingKey, setEditingKey] = useState(null)
   const [entries, setEntries] = useState([])
 
   useEffect(() => {
@@ -39,12 +40,20 @@ function App() {
     setValueCents(e.target.value.replace(/\D/g, ''))
   }
 
+  function resetForm() {
+    setValueCents('')
+    setMonth(currentMonth)
+    setYear(String(currentYear))
+    setIsExternal(false)
+    setEditingKey(null)
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (Number(valueCents) <= 0 || month === '' || year === '') return
 
     const entry = {
-      key: crypto.randomUUID(),
+      key: editingKey ?? crypto.randomUUID(),
       cents: Number(valueCents),
       month: Number(month),
       year: Number(year),
@@ -54,18 +63,32 @@ function App() {
     await putEntry(entry)
 
     setEntries((prev) =>
-      [...prev, entry].sort((a, b) => a.year - b.year || a.month - b.month),
+      [...prev.filter((e) => e.key !== entry.key), entry].sort(
+        (a, b) => a.year - b.year || a.month - b.month,
+      ),
     )
 
-    setValueCents('')
-    setMonth(currentMonth)
-    setYear(String(currentYear))
-    setIsExternal(false)
+    if (editingKey) {
+      resetForm()
+    } else {
+      // Keep month/year so several entries can be added in a row.
+      setValueCents('')
+      setIsExternal(false)
+    }
+  }
+
+  function handleEdit(entry) {
+    setEditingKey(entry.key)
+    setValueCents(String(entry.cents))
+    setMonth(String(entry.month))
+    setYear(String(entry.year))
+    setIsExternal(entry.market === 'external')
   }
 
   async function handleRemove(key) {
     await deleteEntry(key)
     setEntries((prev) => prev.filter((entry) => entry.key !== key))
+    if (key === editingKey) resetForm()
   }
 
   const groups = []
@@ -148,8 +171,18 @@ function App() {
             type="submit"
             className="rounded bg-green-700 px-5 py-2 text-base text-white hover:bg-green-800"
           >
-            Adicionar
+            {editingKey ? 'Salvar' : 'Adicionar'}
           </button>
+
+          {editingKey && (
+            <button
+              type="button"
+              className="rounded border border-gray-300 px-5 py-2 text-base hover:bg-gray-100"
+              onClick={resetForm}
+            >
+              Cancelar
+            </button>
+          )}
         </form>
 
         <div className="overflow-hidden rounded shadow-sm">
@@ -181,7 +214,12 @@ function App() {
                       <td className={cellClass}></td>
                     </tr>
                     {group.entries.map((entry) => (
-                      <tr key={entry.key} className="text-gray-600">
+                      <tr
+                        key={entry.key}
+                        className={`text-gray-600 ${
+                          entry.key === editingKey ? 'bg-yellow-50' : ''
+                        }`}
+                      >
                         <td className={`${cellClass} pl-6`} colSpan={2}>
                           {entry.market === 'external' ? 'Externo' : ''}
                         </td>
@@ -189,14 +227,24 @@ function App() {
                           {formatBRL(entry.cents)}
                         </td>
                         <td className={`${cellClass} text-right`}>
-                          <button
-                            type="button"
-                            className="text-xl leading-none text-red-700 hover:text-red-900"
-                            onClick={() => handleRemove(entry.key)}
-                            aria-label="Remover"
-                          >
-                            ×
-                          </button>
+                          <div className="flex justify-end gap-3">
+                            <button
+                              type="button"
+                              className="leading-none text-blue-700 hover:text-blue-900"
+                              onClick={() => handleEdit(entry)}
+                              aria-label="Editar"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xl leading-none text-red-700 hover:text-red-900"
+                              onClick={() => handleRemove(entry.key)}
+                              aria-label="Remover"
+                            >
+                              ×
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
