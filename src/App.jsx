@@ -27,9 +27,14 @@ function formatPercent(rate) {
   return `${(rate * 100).toFixed(2).replace('.', ',')}%`
 }
 
-function TaxRow({ label, reais, strong }) {
+function TaxRow({ label, reais, strong, accent }) {
+  const tone = accent
+    ? 'font-semibold text-green-700'
+    : strong
+      ? 'font-medium text-gray-700'
+      : 'text-gray-500'
   return (
-    <tr className={`text-sm ${strong ? 'font-medium text-gray-700' : 'text-gray-500'}`}>
+    <tr className={`text-sm ${tone}`}>
       <td className={`${cellClass} pl-8`} colSpan={2}>
         {label}
       </td>
@@ -410,6 +415,11 @@ function App() {
                           label="Total"
                           reais={group.taxes.total}
                           strong
+                        />
+                        <TaxRow
+                          label="Líquido"
+                          reais={group.taxes.net}
+                          accent
                         />
                       </>
                     )}

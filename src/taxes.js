@@ -103,6 +103,8 @@ export function monthlyTaxes({
   const simples = calcSimples({ internal, external, rbt12Internal, rbt12External })
   const das = simples.dasInternal + simples.dasExternal
   const accounting = CONTABILIDADE_MENSAL
+  const total = darf + das + accounting + extraTax
+  const net = revenue - total // líquido: o que sobra do faturamento
 
   return {
     proLabore,
@@ -116,6 +118,7 @@ export function monthlyTaxes({
     das,
     accounting,
     extraTax,
-    total: darf + das + accounting + extraTax,
+    total,
+    net,
   }
 }
