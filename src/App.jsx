@@ -49,7 +49,7 @@ function App() {
   function handleSubmit(entry) {
     saveEntry(entry)
     setSelectedKey(keyOf(entry)) // foca no mês do lançamento
-    if (editing) closeModal()
+    closeModal()
   }
 
   function handleRemove(key) {
@@ -94,7 +94,7 @@ function App() {
         )}
 
         <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : closeModal())}>
-          <DialogContent>
+          <DialogContent showCloseButton={false}>
             <DialogHeader>
               <DialogTitle>
                 {editing ? 'Editar lançamento' : 'Novo lançamento'}

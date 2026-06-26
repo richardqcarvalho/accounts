@@ -51,14 +51,6 @@ export function EntryForm({ editing, onSubmit, onCancel }) {
     }
 
     onSubmit(entry)
-
-    // Em modo de adição o modal continua aberto: limpa o valor mas mantém
-    // tipo/mês/ano para lançar vários seguidos.
-    if (!editing) {
-      setValueCents('')
-      setIsExternal(false)
-      setDescription('')
-    }
   }
 
   return (
