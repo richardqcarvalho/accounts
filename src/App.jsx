@@ -32,7 +32,7 @@ function App() {
 
   useEffect(() => {
     getAllEntries().then((stored) =>
-      setEntries(stored.sort((a, b) => a.year - b.year || a.month - b.month)),
+      setEntries(stored.sort((a, b) => b.year - a.year || b.month - a.month)),
     )
   }, [])
 
@@ -64,7 +64,7 @@ function App() {
 
     setEntries((prev) =>
       [...prev.filter((e) => e.key !== entry.key), entry].sort(
-        (a, b) => a.year - b.year || a.month - b.month,
+        (a, b) => b.year - a.year || b.month - a.month,
       ),
     )
 
