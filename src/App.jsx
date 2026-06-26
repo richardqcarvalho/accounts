@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { deleteEntry, getAllEntries, putEntry } from './db'
 
 const MONTHS = [
@@ -42,11 +42,9 @@ function App() {
     e.preventDefault()
     if (Number(valueCents) <= 0 || month === '' || year === '') return
 
-    const key = `${year}-${month}`
-    const existing = entries.find((entry) => entry.key === key)
     const entry = {
-      key,
-      cents: (existing?.cents ?? 0) + Number(valueCents),
+      key: crypto.randomUUID(),
+      cents: Number(valueCents),
       month: Number(month),
       year: Number(year),
     }
@@ -54,9 +52,7 @@ function App() {
     await putEntry(entry)
 
     setEntries((prev) =>
-      [...prev.filter((e) => e.key !== key), entry].sort(
-        (a, b) => a.year - b.year || a.month - b.month,
-      ),
+      [...prev, entry].sort((a, b) => a.year - b.year || a.month - b.month),
     )
 
     setValueCents('')
@@ -69,7 +65,21 @@ function App() {
     setEntries((prev) => prev.filter((entry) => entry.key !== key))
   }
 
-  const total = entries.reduce((sum, entry) => sum + entry.cents, 0)
+  const groups = []
+  for (const entry of entries) {
+    const last = groups[groups.length - 1]
+    if (last && last.month === entry.month && last.year === entry.year) {
+      last.entries.push(entry)
+      last.cents += entry.cents
+    } else {
+      groups.push({
+        month: entry.month,
+        year: entry.year,
+        cents: entry.cents,
+        entries: [entry],
+      })
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900">
@@ -140,45 +150,45 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 ? (
+              {groups.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-3 text-center text-gray-500">
                     Nenhum lançamento ainda
                   </td>
                 </tr>
               ) : (
-                entries.map((entry) => (
-                  <tr key={entry.key}>
-                    <td className={cellClass}>{MONTHS[entry.month]}</td>
-                    <td className={cellClass}>{entry.year}</td>
-                    <td className={`${cellClass} text-right`}>
-                      {formatBRL(entry.cents)}
-                    </td>
-                    <td className={`${cellClass} text-right`}>
-                      <button
-                        type="button"
-                        className="text-xl leading-none text-red-700 hover:text-red-900"
-                        onClick={() => handleRemove(entry.key)}
-                        aria-label="Remover"
-                      >
-                        ×
-                      </button>
-                    </td>
-                  </tr>
+                groups.map((group) => (
+                  <Fragment key={`${group.year}-${group.month}`}>
+                    <tr className="bg-gray-50 font-semibold">
+                      <td className={cellClass}>{MONTHS[group.month]}</td>
+                      <td className={cellClass}>{group.year}</td>
+                      <td className={`${cellClass} text-right`}>
+                        {formatBRL(group.cents)}
+                      </td>
+                      <td className={cellClass}></td>
+                    </tr>
+                    {group.entries.map((entry) => (
+                      <tr key={entry.key} className="text-gray-600">
+                        <td className={cellClass} colSpan={2}></td>
+                        <td className={`${cellClass} text-right`}>
+                          {formatBRL(entry.cents)}
+                        </td>
+                        <td className={`${cellClass} text-right`}>
+                          <button
+                            type="button"
+                            className="text-xl leading-none text-red-700 hover:text-red-900"
+                            onClick={() => handleRemove(entry.key)}
+                            aria-label="Remover"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))
               )}
             </tbody>
-            {entries.length > 0 && (
-              <tfoot>
-                <tr className="font-semibold">
-                  <td className="p-3" colSpan={2}>
-                    Total
-                  </td>
-                  <td className="p-3 text-right">{formatBRL(total)}</td>
-                  <td className="p-3"></td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </main>
