@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { deleteEntry, getAllEntries, putEntry } from './db'
+import { monthlyTaxes, rbt12ForMonth } from './taxes'
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -20,6 +21,22 @@ function formatBRL(cents) {
     style: 'currency',
     currency: 'BRL',
   })
+}
+
+function formatPercent(rate) {
+  return `${(rate * 100).toFixed(2).replace('.', ',')}%`
+}
+
+function TaxRow({ label, reais, strong }) {
+  return (
+    <tr className={`text-sm ${strong ? 'font-medium text-gray-700' : 'text-gray-500'}`}>
+      <td className={`${cellClass} pl-8`} colSpan={2}>
+        {label}
+      </td>
+      <td className={`${cellClass} text-right`}>{formatBRL(Math.round(reais * 100))}</td>
+      <td className={cellClass}></td>
+    </tr>
+  )
 }
 
 function App() {
@@ -93,18 +110,46 @@ function App() {
 
   const groups = []
   for (const entry of entries) {
+    const external = entry.market === 'external' ? entry.cents : 0
+    const internal = entry.cents - external
     const last = groups[groups.length - 1]
     if (last && last.month === entry.month && last.year === entry.year) {
       last.entries.push(entry)
       last.cents += entry.cents
+      last.internalCents += internal
+      last.externalCents += external
     } else {
       groups.push({
         month: entry.month,
         year: entry.year,
         cents: entry.cents,
+        internalCents: internal,
+        externalCents: external,
         entries: [entry],
       })
     }
+  }
+
+  // Impostos precisam do RBT12 (12 meses móveis), por mercado (LC 123 art. 18
+  // §15). Calculado por calendário (ano*12 + mês) para ficar à prova de lacunas:
+  // meses sem registro contam como 0.
+  const calIndexOf = (group) => group.year * 12 + group.month
+  const internalByCal = new Map()
+  const externalByCal = new Map()
+  for (const group of groups) {
+    internalByCal.set(calIndexOf(group), group.internalCents / 100)
+    externalByCal.set(calIndexOf(group), group.externalCents / 100)
+  }
+  for (const group of groups) {
+    const ci = calIndexOf(group)
+    const internal = group.internalCents / 100
+    const external = group.externalCents / 100
+    group.taxes = monthlyTaxes({
+      internal,
+      external,
+      rbt12Internal: rbt12ForMonth(ci, internal, internalByCal),
+      rbt12External: rbt12ForMonth(ci, external, externalByCal),
+    })
   }
 
   return (
@@ -248,6 +293,39 @@ function App() {
                         </td>
                       </tr>
                     ))}
+                    {group.taxes && (
+                      <>
+                        <TaxRow
+                          label="Pró-labore (28%)"
+                          reais={group.taxes.proLabore}
+                        />
+                        <TaxRow label="INSS" reais={group.taxes.inss} />
+                        <TaxRow label="IRRF" reais={group.taxes.irrf} />
+                        {group.internalCents > 0 && (
+                          <TaxRow
+                            label={`Simples interno (${formatPercent(
+                              group.taxes.internalRate,
+                            )})`}
+                            reais={group.taxes.dasInternal}
+                          />
+                        )}
+                        {group.externalCents > 0 && (
+                          <TaxRow
+                            label={`Simples externo (${formatPercent(
+                              group.taxes.externalRate,
+                            )})`}
+                            reais={group.taxes.dasExternal}
+                          />
+                        )}
+                        <TaxRow label="DARF" reais={group.taxes.darf} />
+                        <TaxRow label="DAS" reais={group.taxes.das} />
+                        <TaxRow
+                          label="Total de impostos"
+                          reais={group.taxes.total}
+                          strong
+                        />
+                      </>
+                    )}
                   </Fragment>
                 ))
               )}
