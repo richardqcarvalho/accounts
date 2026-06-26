@@ -7,7 +7,9 @@ import { formatBRL } from '@/lib/format'
 // aplica o recuo/tamanho usado na seção de impostos.
 export function EntryRow({ label, entry, editing, onEdit, onRemove, small }) {
   return (
-    <TableRow className={editing ? 'bg-yellow-50' : undefined}>
+    <TableRow
+      className={editing ? 'bg-yellow-50 dark:bg-yellow-500/10' : undefined}
+    >
       <TableCell
         className={`text-muted-foreground ${small ? 'pl-8 text-sm' : 'pl-6'}`}
         colSpan={2}

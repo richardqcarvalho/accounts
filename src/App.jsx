@@ -11,12 +11,15 @@ import {
 import { BackupButtons } from '@/components/backup-buttons'
 import { EntriesTable } from '@/components/entries-table'
 import { EntryForm } from '@/components/entry-form'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Toaster } from '@/components/ui/sonner'
 import { useEntries } from '@/hooks/use-entries'
+import { useTheme } from '@/hooks/use-theme'
 import { buildMonthlyGroups } from '@/lib/grouping'
 
 function App() {
   const { entries, saveEntry, removeEntry, importEntries } = useEntries()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
 
@@ -54,6 +57,7 @@ function App() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Lançamentos</h1>
           <div className="flex flex-wrap gap-2">
+            <ThemeToggle theme={theme} setTheme={setTheme} />
             <BackupButtons entries={entries} onImport={importEntries} />
             <Button onClick={openNew}>
               <Plus className="size-4" />
@@ -90,7 +94,7 @@ function App() {
         />
       </main>
 
-      <Toaster richColors position="top-center" />
+      <Toaster theme={resolvedTheme} richColors position="top-center" />
     </div>
   )
 }

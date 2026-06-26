@@ -5,7 +5,7 @@ import { formatBRL } from '@/lib/format'
 // `accent` o líquido.
 export function TaxRow({ label, reais, strong, accent }) {
   const tone = accent
-    ? 'font-semibold text-green-700'
+    ? 'font-semibold text-green-600 dark:text-green-400'
     : strong
       ? 'font-medium text-foreground'
       : 'text-muted-foreground'
