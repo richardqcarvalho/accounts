@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Caminho relativo para funcionar no subdiretório do GitHub Pages.
+  base: './',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
