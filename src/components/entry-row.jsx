@@ -9,15 +9,24 @@ import {
 import { TableCell, TableRow } from '@/components/ui/table'
 import { formatBRL } from '@/lib/format'
 
-// Linha editável de um lançamento (faturamento ou desconto). As ações (editar /
-// excluir) ficam escondidas atrás de um menu de reticências.
-export function EntryRow({ label, entry, editing, onEdit, onRemove }) {
+// Cor e sinal do valor conforme a direção do dinheiro.
+const TONE = {
+  in: 'text-green-600 dark:text-green-400',
+  out: 'text-red-600 dark:text-red-400',
+}
+const SIGN = { in: '+', out: '−' }
+
+// Linha editável de um lançamento (entrada ou desconto). `direction` ('in'/'out')
+// colore e prefixa o valor. As ações (editar / excluir) ficam escondidas atrás de
+// um menu de reticências.
+export function EntryRow({ label, entry, editing, direction, onEdit, onRemove }) {
   return (
     <TableRow
       className={`h-12 ${editing ? 'bg-yellow-50 dark:bg-yellow-500/10' : ''}`}
     >
       <TableCell className="text-muted-foreground">{label}</TableCell>
-      <TableCell className="text-right tabular-nums">
+      <TableCell className={`tabular-nums ${direction ? TONE[direction] : ''}`}>
+        {direction ? SIGN[direction] : ''}
         {formatBRL(entry.cents)}
       </TableCell>
       <TableCell className="w-0 text-right">

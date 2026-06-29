@@ -38,8 +38,6 @@ export function parseEntriesFile(text) {
       }
       if (kind === 'tax') {
         entry.description = typeof e.description === 'string' ? e.description : ''
-        entry.category =
-          e.category === 'expense' || e.category === 'fee' ? e.category : 'tax'
       } else {
         entry.market = e.market === 'external' ? 'external' : 'internal'
       }

@@ -17,28 +17,15 @@ export function buildMonthlyGroups(entries) {
         internalCents: 0,
         externalCents: 0,
         revenues: [],
-        extraTaxItems: [], // descontos marcados como imposto
-        extraFeeItems: [], // descontos marcados como taxa
-        extraExpenseItems: [], // descontos marcados como outras despesas
-        extraTaxCents: 0,
-        extraFeeCents: 0,
-        extraExpenseCents: 0,
+        extraItems: [], // descontos avulsos lançados
+        extraCents: 0,
       }
       groups.push(group)
     }
 
     if (entry.kind === 'tax') {
-      // Descontos sem categoria (lançamentos antigos) contam como imposto.
-      if (entry.category === 'expense') {
-        group.extraExpenseItems.push(entry)
-        group.extraExpenseCents += entry.cents
-      } else if (entry.category === 'fee') {
-        group.extraFeeItems.push(entry)
-        group.extraFeeCents += entry.cents
-      } else {
-        group.extraTaxItems.push(entry)
-        group.extraTaxCents += entry.cents
-      }
+      group.extraItems.push(entry)
+      group.extraCents += entry.cents
     } else {
       const external = entry.market === 'external' ? entry.cents : 0
       group.revenues.push(entry)
@@ -66,9 +53,7 @@ export function buildMonthlyGroups(entries) {
       external,
       rbt12Internal: rbt12ForMonth(ci, internal, internalByCal),
       rbt12External: rbt12ForMonth(ci, external, externalByCal),
-      extraTax: group.extraTaxCents / 100,
-      extraFee: group.extraFeeCents / 100,
-      extraExpense: group.extraExpenseCents / 100,
+      extra: group.extraCents / 100,
     })
   }
 

@@ -22,25 +22,6 @@ import { EntryRow } from '@/components/entry-row'
 import { TaxRow } from '@/components/tax-row'
 import { formatBRL, formatPercent } from '@/lib/format'
 
-// Cabeçalho de seção da tabela. `nested` indica uma subseção (recuada e mais
-// leve, sem barra de fundo).
-function SectionRow({ label, nested }) {
-  return (
-    <TableRow className="hover:bg-transparent">
-      <TableCell
-        colSpan={3}
-        className={
-          nested
-            ? 'py-1.5 pl-6 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70'
-            : 'bg-muted/30 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'
-        }
-      >
-        {label}
-      </TableCell>
-    </TableRow>
-  )
-}
-
 // Card com a tabela padrão (cabeçalho Item/Valor + coluna de ações). As linhas
 // vêm como children.
 function DetailTable({ children }) {
@@ -50,10 +31,10 @@ function DetailTable({ children }) {
         <TableHeader>
           <TableRow className="bg-muted hover:bg-muted">
             <TableHead className="font-semibold text-foreground">Item</TableHead>
-            <TableHead className="text-right font-semibold text-foreground">
-              Valor
+            <TableHead className="font-semibold text-foreground">Valor</TableHead>
+            <TableHead className="w-0 text-right font-semibold text-foreground">
+              Ações
             </TableHead>
-            <TableHead className="w-0" aria-label="Ações" />
           </TableRow>
         </TableHeader>
         <TableBody>{children}</TableBody>
@@ -62,10 +43,10 @@ function DetailTable({ children }) {
   )
 }
 
-// Tabela do mês selecionado, em uma única visão: seção de Faturamentos e seção
-// de Descontos (subdividida em Impostos, Taxas e Outras despesas). As linhas
-// calculadas são read-only; os lançamentos manuais são editáveis. Total e
-// Líquido ficam nos cards de cima.
+// Tabela do mês selecionado, em uma única visão. Em cima, os lançamentos manuais
+// (entradas em verde, descontos em vermelho); embaixo, os valores calculados
+// automaticamente. Cor e sinal indicam entrada/desconto; subitens detalham um
+// total. Total e Líquido ficam nos cards de cima.
 export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
   const { taxes } = group
   // Lançamento aguardando confirmação de exclusão (null = modal fechado).
@@ -76,12 +57,14 @@ export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
     setPending(null)
   }
 
-  // Linha editável de lançamento; a exclusão passa pela confirmação.
-  const renderEntry = (entry, label) => (
+  // Linha editável de lançamento; a exclusão passa pela confirmação. `direction`
+  // ('in'/'out') colore o valor como entrada ou desconto.
+  const renderEntry = (entry, label, direction) => (
     <EntryRow
       key={entry.key}
       label={label}
       entry={entry}
+      direction={direction}
       editing={entry.key === editingKey}
       onEdit={onEdit}
       onRemove={() => setPending({ key: entry.key, label, cents: entry.cents })}
@@ -91,50 +74,39 @@ export function MonthDetail({ group, editingKey, onEdit, onRemove }) {
   return (
     <>
       <DetailTable>
-        <SectionRow label="Faturamentos" />
         {group.revenues.map((entry) =>
           renderEntry(
             entry,
             entry.market === 'external'
               ? 'Faturamento externo'
               : 'Faturamento interno',
+            'in',
           ),
         )}
+        {group.extraItems.map((entry) =>
+          renderEntry(entry, entry.description || 'Desconto', 'out'),
+        )}
 
-        <SectionRow label="Descontos" />
-
-        <SectionRow label="Impostos" nested />
         <TaxRow label="Pró-labore (28%)" reais={taxes.proLabore} />
-        <TaxRow label="INSS" reais={taxes.inss} />
-        <TaxRow label="IRRF" reais={taxes.irrf} />
+        <TaxRow label="DARF unificado" reais={taxes.darf} direction="out" />
+        <TaxRow label="INSS" reais={taxes.inss} indent={1} />
+        <TaxRow label="IRRF" reais={taxes.irrf} indent={1} />
+        <TaxRow label="DAS Simples" reais={taxes.das} direction="out" />
         {group.internalCents > 0 && (
           <TaxRow
             label={`Simples interno (${formatPercent(taxes.internalRate)})`}
             reais={taxes.dasInternal}
+            indent={1}
           />
         )}
         {group.externalCents > 0 && (
           <TaxRow
             label={`Simples externo (${formatPercent(taxes.externalRate)})`}
             reais={taxes.dasExternal}
+            indent={1}
           />
         )}
-        <TaxRow label="DARF unificado" reais={taxes.darf} />
-        <TaxRow label="DAS Simples" reais={taxes.das} />
-        {group.extraTaxItems.map((entry) =>
-          renderEntry(entry, entry.description || 'Desconto'),
-        )}
-
-        {group.extraFeeItems.length > 0 && <SectionRow label="Taxas" nested />}
-        {group.extraFeeItems.map((entry) =>
-          renderEntry(entry, entry.description || 'Desconto'),
-        )}
-
-        <SectionRow label="Outras despesas" nested />
-        <TaxRow label="Contabilizei" reais={taxes.accounting} />
-        {group.extraExpenseItems.map((entry) =>
-          renderEntry(entry, entry.description || 'Desconto'),
-        )}
+        <TaxRow label="Contabilizei" reais={taxes.accounting} direction="out" />
       </DetailTable>
 
       <AlertDialog

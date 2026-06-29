@@ -22,7 +22,6 @@ export function EntryForm({ editing, onSubmit, onCancel }) {
   const [isExternal, setIsExternal] = useState(false)
   const [kind, setKind] = useState('revenue')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('tax')
 
   useEffect(() => {
     if (!editing) return
@@ -32,7 +31,6 @@ export function EntryForm({ editing, onSubmit, onCancel }) {
     setKind(editing.kind ?? 'revenue')
     setIsExternal(editing.market === 'external')
     setDescription(editing.description ?? '')
-    setCategory(editing.category ?? 'tax')
   }, [editing])
 
   function handleSubmit(e) {
@@ -48,7 +46,6 @@ export function EntryForm({ editing, onSubmit, onCancel }) {
     }
     if (kind === 'tax') {
       entry.description = description.trim()
-      entry.category = category
     } else {
       entry.market = isExternal ? 'external' : 'internal'
     }
@@ -126,31 +123,15 @@ export function EntryForm({ editing, onSubmit, onCancel }) {
           <Label htmlFor="mercado-externo">Mercado externo</Label>
         </div>
       ) : (
-        <>
-          <div className="grid gap-1.5">
-            <Label>Categoria</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="tax">Imposto</SelectItem>
-                <SelectItem value="fee">Taxa</SelectItem>
-                <SelectItem value="expense">Outras despesas</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label>Descrição</Label>
-            <Input
-              type="text"
-              placeholder="Ex: DARF complementar"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-        </>
+        <div className="grid gap-1.5">
+          <Label>Descrição</Label>
+          <Input
+            type="text"
+            placeholder="Ex: DARF complementar"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
       )}
 
       <div className="flex justify-end gap-2 pt-2">
