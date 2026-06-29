@@ -1,15 +1,4 @@
-import { useState } from 'react'
 import type { ReactNode } from 'react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Card } from '@/components/ui/card'
 import {
   Table,
@@ -20,21 +9,14 @@ import {
 } from '@/components/ui/table'
 import { EntryRow } from '@/components/entry-row'
 import { TaxRow } from '@/components/tax-row'
-import { formatBRL, formatPercent } from '@/lib/format'
-import type { Direction, Entry, MonthGroup } from '@/types'
-
-// Lançamento aguardando confirmação de exclusão.
-interface Pending {
-  key: string
-  label: string
-  cents: number
-}
+import { formatPercent } from '@/lib/format'
+import type { Direction, Entry, MonthGroup, RemoveRequest } from '@/types'
 
 interface MonthDetailProps {
   group: MonthGroup
   editingKey?: string
   onEdit: (entry: Entry) => void
-  onRemove: (key: string) => void
+  onRequestRemove: (request: RemoveRequest) => void
 }
 
 // Card com a tabela padrão (cabeçalho Item/Valor + coluna de ações). As linhas
@@ -58,28 +40,18 @@ function DetailTable({ children }: { children: ReactNode }) {
   )
 }
 
-// Tabela do mês selecionado, em uma única visão. Em cima, os lançamentos manuais
-// (entradas em verde, descontos em vermelho); embaixo, os valores calculados
-// automaticamente. Cor e sinal indicam entrada/desconto; subitens detalham um
-// total. Total e Líquido ficam nos cards de cima.
+// Tabela do mês: lançamentos manuais (entradas em verde, descontos em vermelho)
+// seguidos dos valores calculados. O pró-labore não aparece aqui — fica no card
+// de Fator R. Total e Líquido ficam nos cards de cima.
 export function MonthDetail({
   group,
   editingKey,
   onEdit,
-  onRemove,
+  onRequestRemove,
 }: MonthDetailProps) {
   const { taxes } = group
-  // Lançamento aguardando confirmação de exclusão (null = modal fechado).
-  const [pending, setPending] = useState<Pending | null>(null)
 
-  function confirmRemove() {
-    if (pending) onRemove(pending.key)
-    setPending(null)
-  }
-
-  // Linha editável de lançamento; a exclusão passa pela confirmação. `direction`
-  // ('in'/'out') colore o valor como entrada ou desconto.
-  const renderEntry = (entry: Entry, label: string, direction: Direction) => (
+  const renderEntry = (entry: Entry, label: string, direction?: Direction) => (
     <EntryRow
       key={entry.key}
       label={label}
@@ -87,69 +59,46 @@ export function MonthDetail({
       direction={direction}
       editing={entry.key === editingKey}
       onEdit={onEdit}
-      onRemove={() => setPending({ key: entry.key, label, cents: entry.cents })}
+      onRemove={() =>
+        onRequestRemove({ key: entry.key, label, cents: entry.cents })
+      }
     />
   )
 
   return (
-    <>
-      <DetailTable>
-        {group.revenues.map((entry) =>
-          renderEntry(
-            entry,
-            entry.market === 'external'
-              ? 'Faturamento externo'
-              : 'Faturamento interno',
-            'in',
-          ),
-        )}
-        {group.extraItems.map((entry) =>
-          renderEntry(entry, entry.description || 'Desconto', 'out'),
-        )}
+    <DetailTable>
+      {group.revenues.map((entry) =>
+        renderEntry(
+          entry,
+          entry.market === 'external'
+            ? 'Faturamento externo'
+            : 'Faturamento interno',
+          'in',
+        ),
+      )}
+      {group.extraItems.map((entry) =>
+        renderEntry(entry, entry.description || 'Desconto', 'out'),
+      )}
 
-        <TaxRow label="Pró-labore (28%)" reais={taxes.proLabore} />
-        <TaxRow label="DARF unificado" reais={taxes.darf} direction="out" />
-        <TaxRow label="INSS" reais={taxes.inss} indent={1} />
-        <TaxRow label="IRRF" reais={taxes.irrf} indent={1} />
-        <TaxRow label="DAS Simples" reais={taxes.das} direction="out" />
-        {group.internalCents > 0 && (
-          <TaxRow
-            label={`Simples interno (${formatPercent(taxes.internalRate)})`}
-            reais={taxes.dasInternal}
-            indent={1}
-          />
-        )}
-        {group.externalCents > 0 && (
-          <TaxRow
-            label={`Simples externo (${formatPercent(taxes.externalRate)})`}
-            reais={taxes.dasExternal}
-            indent={1}
-          />
-        )}
-        <TaxRow label="Contabilizei" reais={taxes.accounting} direction="out" />
-      </DetailTable>
-
-      <AlertDialog
-        open={pending !== null}
-        onOpenChange={(open) => !open && setPending(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir lançamento?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pending
-                ? `“${pending.label}” no valor de ${formatBRL(pending.cents)} será removido. Essa ação não pode ser desfeita.`
-                : null}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={confirmRemove}>
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+      <TaxRow label="DARF unificado" reais={taxes.darf} direction="out" />
+      <TaxRow label="INSS" reais={taxes.inss} indent={1} />
+      <TaxRow label="IRRF" reais={taxes.irrf} indent={1} />
+      <TaxRow label="DAS Simples" reais={taxes.das} direction="out" />
+      {group.internalCents > 0 && (
+        <TaxRow
+          label={`Simples interno (${formatPercent(taxes.internalRate)})`}
+          reais={taxes.dasInternal}
+          indent={1}
+        />
+      )}
+      {group.externalCents > 0 && (
+        <TaxRow
+          label={`Simples externo (${formatPercent(taxes.externalRate)})`}
+          reais={taxes.dasExternal}
+          indent={1}
+        />
+      )}
+      <TaxRow label="Contabilizei" reais={taxes.accounting} direction="out" />
+    </DetailTable>
   )
 }

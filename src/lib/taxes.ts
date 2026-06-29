@@ -1,5 +1,12 @@
-import { ANEXO_III, CONTABILIDADE_MENSAL, INSS, IRRF } from '@/lib/tax-tables'
-import type { Faixa } from '@/lib/tax-tables'
+import {
+  ANEXO_III,
+  ANEXO_V,
+  CONTABILIDADE_MENSAL,
+  FATOR_R_THRESHOLD,
+  INSS,
+  IRRF,
+} from '@/lib/tax-tables'
+import type { Faixa, SimplesTable } from '@/lib/tax-tables'
 import type { MonthTaxes } from '@/types'
 
 // Todos os valores aqui são em reais (não em centavos).
@@ -54,10 +61,10 @@ function truncCents(reais: number): number {
   return Math.floor(reais * 100) / 100
 }
 
-function faixaFor(rbt12: number): Faixa {
+function faixaFor(rbt12: number, table: SimplesTable): Faixa {
   return (
-    ANEXO_III.faixas.find((f) => rbt12 <= f.rbt12UpTo) ??
-    ANEXO_III.faixas[ANEXO_III.faixas.length - 1]
+    table.faixas.find((f) => rbt12 <= f.rbt12UpTo) ??
+    table.faixas[table.faixas.length - 1]
   )
 }
 
@@ -70,30 +77,32 @@ interface SimplesInput {
   external: number
   rbt12Internal: number
   rbt12External: number
+  table: SimplesTable
 }
 
-// DAS do Simples (Anexo III) do mês. Interno e externo são calculados
-// SEPARADAMENTE (LC 123/2006, art. 18, §15): cada mercado usa o seu próprio
-// RBT12 para definir faixa/alíquota; ao final os dois DAS se somam. Na
-// exportação (externo) a alíquota ainda desconsidera ISS/COFINS/PIS.
+// DAS do Simples do mês, usando a tabela do anexo definido pelo Fator R. Interno
+// e externo são calculados SEPARADAMENTE (LC 123/2006, art. 18, §15): cada
+// mercado usa o seu próprio RBT12 para definir faixa/alíquota; ao final os dois
+// DAS se somam. Na exportação (externo) a alíquota desconsidera ISS/COFINS/PIS.
 export function calcSimples({
   internal,
   external,
   rbt12Internal,
   rbt12External,
+  table,
 }: SimplesInput) {
   let internalRate = 0
   let dasInternal = 0
   if (internal > 0) {
-    internalRate = effectiveRate(rbt12Internal, faixaFor(rbt12Internal))
+    internalRate = effectiveRate(rbt12Internal, faixaFor(rbt12Internal, table))
     dasInternal = truncCents(internalRate * internal)
   }
 
   let externalRate = 0
   let dasExternal = 0
   if (external > 0) {
-    const faixa = faixaFor(rbt12External)
-    const excludedShare = ANEXO_III.exportExcludedTaxes.reduce(
+    const faixa = faixaFor(rbt12External, table)
+    const excludedShare = table.exportExcludedTaxes.reduce(
       (acc, tax) => acc + faixa.dist[tax],
       0,
     )
@@ -104,38 +113,87 @@ export function calcSimples({
   return { internalRate, externalRate, dasInternal, dasExternal }
 }
 
-interface MonthlyTaxesInput extends SimplesInput {
-  extra?: number
+interface MonthlyTaxesInput {
+  internal: number
+  external: number
+  rbt12Internal: number
+  rbt12External: number
+  proLaborePaid: number // pró-labore pago no mês
+  folha12Prev: number // pró-labore pago nos 12 meses anteriores (Fator R)
+  rbt12TotalPrev: number // receita total dos 12 meses anteriores (Fator R)
+  revenueWindow: number // receita total dos 12 meses terminando no mês (alvo)
+  folhaWindowOthers: number // pró-labore dos 11 meses anteriores ao mês (alvo)
+  extra?: number // descontos avulsos
 }
 
-// Conjunto de impostos e despesas do mês a partir do faturamento
-// interno/externo, dos RBT12 de cada mercado e dos descontos avulsos lançados no
-// mês (`extra`). Tudo que reduz o faturamento entra no total; o líquido é o que
-// sobra.
+// Conjunto de impostos e despesas do mês.
+//
+// O Fator R (folha ÷ receita dos 12 meses anteriores) define o anexo: ≥ 28% →
+// Anexo III; abaixo → Anexo V. O INSS/IRRF saem sobre o pró-labore efetivamente
+// pago. `proLaboreTarget` é quanto pagar no mês para a folha dos 12 meses
+// (terminando neste mês) atingir 28% da receita — mantendo o Fator R no limite.
 export function monthlyTaxes({
   internal,
   external,
   rbt12Internal,
   rbt12External,
+  proLaborePaid,
+  folha12Prev,
+  rbt12TotalPrev,
+  revenueWindow,
+  folhaWindowOthers,
   extra = 0,
 }: MonthlyTaxesInput): MonthTaxes {
   const revenue = internal + external
-  const proLabore = revenue * ANEXO_III.proLaboreRate
-  const inss = calcINSS(proLabore)
-  const irrf = calcIRRF(proLabore)
+
+  // Fator R: usa os 12 meses anteriores; sem histórico (início de atividade)
+  // cai para a razão do próprio mês; sem base nenhuma, assume o limite.
+  const fatorR =
+    rbt12TotalPrev > 0
+      ? folha12Prev / rbt12TotalPrev
+      : revenue > 0
+        ? proLaborePaid / revenue
+        : FATOR_R_THRESHOLD
+  const anexo = fatorR >= FATOR_R_THRESHOLD ? 'III' : 'V'
+  const table = anexo === 'III' ? ANEXO_III : ANEXO_V
+
+  const proLaboreTarget = Math.max(
+    0,
+    FATOR_R_THRESHOLD * revenueWindow - folhaWindowOthers,
+  )
+
+  // DARF: usa o pró-labore pago; se não houver, estima sobre 28% do faturamento
+  // (o mínimo do Fator R) e sinaliza que é sugerido.
+  const proLaboreBase =
+    proLaborePaid > 0 ? proLaborePaid : revenue * FATOR_R_THRESHOLD
+  const proLaboreEstimated = proLaborePaid <= 0 && proLaboreBase > 0
+  const inss = calcINSS(proLaboreBase)
+  const irrf = calcIRRF(proLaboreBase)
   const darf = inss + irrf // DARF unificada (INSS + IRRF)
 
-  const simples = calcSimples({ internal, external, rbt12Internal, rbt12External })
+  const simples = calcSimples({
+    internal,
+    external,
+    rbt12Internal,
+    rbt12External,
+    table,
+  })
   const das = simples.dasInternal + simples.dasExternal
   const accounting = CONTABILIDADE_MENSAL
 
   // Tudo que é descontado do faturamento: impostos calculados (DARF + DAS),
-  // contabilidade fixa e os descontos avulsos lançados.
+  // contabilidade fixa e os descontos avulsos. O pró-labore é retirada do sócio,
+  // não entra como despesa do líquido.
   const total = darf + das + accounting + extra
-  const net = revenue - total // líquido: o que sobra do faturamento
+  const net = revenue - total
 
   return {
-    proLabore,
+    proLaborePaid,
+    proLaboreBase,
+    proLaboreEstimated,
+    proLaboreTarget,
+    fatorR,
+    anexo,
     inss,
     irrf,
     darf,

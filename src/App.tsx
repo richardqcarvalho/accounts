@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,6 +21,7 @@ import {
 import { Toaster } from '@/components/ui/sonner'
 import { BackupButtons } from '@/components/backup-buttons'
 import { EntryForm } from '@/components/entry-form'
+import { FatorRCard } from '@/components/fator-r-card'
 import { MonthDetail } from '@/components/month-detail'
 import { MonthSummary } from '@/components/month-summary'
 import { MonthTabs } from '@/components/month-tabs'
@@ -18,7 +29,8 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { useEntries } from '@/hooks/use-entries'
 import { useTheme } from '@/hooks/use-theme'
 import { buildMonthlyGroups } from '@/lib/grouping'
-import type { Entry } from '@/types'
+import { formatBRL } from '@/lib/format'
+import type { Entry, RemoveRequest } from '@/types'
 
 const keyOf = (x: { year: number; month: number }) => `${x.year}-${x.month}`
 
@@ -28,6 +40,7 @@ function App() {
   const [editing, setEditing] = useState<Entry | null>(null)
   const [open, setOpen] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<RemoveRequest | null>(null)
 
   const groups = useMemo(() => buildMonthlyGroups(entries), [entries])
   const selected =
@@ -54,9 +67,12 @@ function App() {
     closeModal()
   }
 
-  function handleRemove(key: string) {
-    removeEntry(key)
-    if (key === editing?.key) closeModal()
+  function confirmRemove() {
+    if (pendingDelete) {
+      removeEntry(pendingDelete.key)
+      if (pendingDelete.key === editing?.key) closeModal()
+    }
+    setPendingDelete(null)
   }
 
   return (
@@ -82,11 +98,16 @@ function App() {
               onSelect={setSelectedKey}
             />
             <MonthSummary group={selected} />
+            <FatorRCard
+              group={selected}
+              onEdit={openEdit}
+              onRequestRemove={setPendingDelete}
+            />
             <MonthDetail
               group={selected}
               editingKey={editing?.key}
               onEdit={openEdit}
-              onRemove={handleRemove}
+              onRequestRemove={setPendingDelete}
             />
           </div>
         ) : (
@@ -114,6 +135,28 @@ function App() {
             />
           </DialogContent>
         </Dialog>
+
+        <AlertDialog
+          open={pendingDelete !== null}
+          onOpenChange={(o) => !o && setPendingDelete(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir lançamento?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete
+                  ? `“${pendingDelete.label}” no valor de ${formatBRL(pendingDelete.cents)} será removido. Essa ação não pode ser desfeita.`
+                  : null}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={confirmRemove}>
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
 
       <Toaster theme={resolvedTheme} richColors position="top-center" />

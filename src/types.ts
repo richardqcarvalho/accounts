@@ -1,10 +1,13 @@
 // Tipos de domínio compartilhados.
 
 export type Market = 'internal' | 'external'
-export type EntryKind = 'revenue' | 'tax'
+export type EntryKind = 'revenue' | 'tax' | 'prolabore'
 
 // Direção do dinheiro: entrada (verde, +) ou desconto/saída (vermelho, −).
 export type Direction = 'in' | 'out'
+
+// Anexo do Simples Nacional aplicado no mês (definido pelo Fator R).
+export type Anexo = 'III' | 'V'
 
 interface BaseEntry {
   key: string
@@ -25,11 +28,21 @@ export interface TaxEntry extends BaseEntry {
   description: string
 }
 
-export type Entry = RevenueEntry | TaxEntry
+// Pró-labore efetivamente pago no mês (base do INSS/IRRF e do Fator R).
+export interface ProLaboreEntry extends BaseEntry {
+  kind: 'prolabore'
+}
+
+export type Entry = RevenueEntry | TaxEntry | ProLaboreEntry
 
 // Impostos e despesas calculados para um mês (valores em reais).
 export interface MonthTaxes {
-  proLabore: number
+  proLaborePaid: number // pró-labore pago no mês
+  proLaboreBase: number // base do INSS/IRRF: o pago, ou 28% do faturamento se não houver
+  proLaboreEstimated: boolean // true quando a base do DARF foi estimada (sem pró-labore pago)
+  proLaboreTarget: number // pró-labore sugerido para manter o Fator R em 28%
+  fatorR: number // folha 12 meses ÷ receita 12 meses
+  anexo: Anexo
   inss: number
   irrf: number
   darf: number
@@ -50,10 +63,19 @@ export interface MonthGroup {
   cents: number
   internalCents: number
   externalCents: number
+  proLaboreCents: number
   revenues: RevenueEntry[]
+  proLaboreItems: ProLaboreEntry[]
   extraItems: TaxEntry[]
   extraCents: number
   taxes: MonthTaxes
+}
+
+// Pedido de exclusão aguardando confirmação.
+export interface RemoveRequest {
+  key: string
+  label: string
+  cents: number
 }
 
 export type Theme = 'light' | 'dark' | 'system'

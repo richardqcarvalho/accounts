@@ -45,6 +45,9 @@ export function parseEntriesFile(text: string): Entry[] {
           description: typeof e.description === 'string' ? e.description : '',
         }
       }
+      if (e.kind === 'prolabore') {
+        return { ...base, kind: 'prolabore' }
+      }
       return {
         ...base,
         kind: 'revenue',

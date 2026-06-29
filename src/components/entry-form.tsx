@@ -40,8 +40,11 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
     if (editing.kind === 'tax') {
       setDescription(editing.description)
       setIsExternal(false)
-    } else {
+    } else if (editing.kind === 'revenue') {
       setIsExternal(editing.market === 'external')
+      setDescription('')
+    } else {
+      setIsExternal(false)
       setDescription('')
     }
   }, [editing])
@@ -59,7 +62,9 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
     const entry: Entry =
       kind === 'tax'
         ? { ...base, kind: 'tax', description: description.trim() }
-        : { ...base, kind: 'revenue', market: isExternal ? 'external' : 'internal' }
+        : kind === 'prolabore'
+          ? { ...base, kind: 'prolabore' }
+          : { ...base, kind: 'revenue', market: isExternal ? 'external' : 'internal' }
 
     onSubmit(entry)
   }
@@ -74,6 +79,7 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="revenue">Entrada</SelectItem>
+            <SelectItem value="prolabore">Pró-labore</SelectItem>
             <SelectItem value="tax">Desconto</SelectItem>
           </SelectContent>
         </Select>
@@ -124,7 +130,7 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
         </div>
       </div>
 
-      {kind === 'revenue' ? (
+      {kind === 'revenue' && (
         <div className="flex items-center gap-2">
           <Checkbox
             id="mercado-externo"
@@ -133,7 +139,8 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
           />
           <Label htmlFor="mercado-externo">Mercado externo</Label>
         </div>
-      ) : (
+      )}
+      {kind === 'tax' && (
         <div className="grid gap-1.5">
           <Label>Descrição</Label>
           <Input

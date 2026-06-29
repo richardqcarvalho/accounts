@@ -3,7 +3,7 @@
 // Fontes:
 //   INSS teto 2026: gov.br/inss, contabilizei.com.br/contabilidade-online/tabela-inss
 //   IRRF 2026:      gov.br/receitafederal/.../tabelas/2026 (isenção até R$ 5.000 + redutor)
-//   Anexo III 2026: contabilizei.com.br/contabilidade-online/anexo-3-simples-nacional
+//   Anexo III/V 2026: contabilizei.com.br, contaja.com.br/blog/anexo-5-simples-nacional
 //   Fator R / exportação de serviços: LC 123/2006, art. 18.
 
 export const TAX_YEAR = 2026
@@ -11,6 +11,9 @@ export const TAX_YEAR = 2026
 // Mensalidade do serviço de contabilidade (plano padrão da Contabilizei).
 // Taxa fixa cobrada todo mês — ajuste conforme o seu plano.
 export const CONTABILIDADE_MENSAL = 195
+
+// Fator R ≥ 28% → Anexo III (alíquotas menores); abaixo disso → Anexo V.
+export const FATOR_R_THRESHOLD = 0.28
 
 // Contribuição do sócio sobre o pró-labore: alíquota fixa de 11%, limitada ao teto.
 export interface InssTable {
@@ -52,9 +55,9 @@ export const IRRF: IrrfTable = {
   redutor: { upTo: 7350, base: 978.62, factor: 0.133145 },
 }
 
-// Simples Nacional — Anexo III (serviços), com Fator R.
-// Pró-labore fixado em 28% do faturamento mantém o Fator R ≥ 28% (Anexo III).
-// Na exportação de serviços (mercado externo) o DAS desconsidera ISS, COFINS e PIS.
+// Simples Nacional — serviços (Anexo III ou V conforme o Fator R).
+// Na exportação de serviços (mercado externo) o DAS desconsidera ISS, COFINS e
+// PIS em ambos os anexos (LC 123/2006, art. 18, §14).
 export interface TaxDistribution {
   cpp: number
   iss: number
@@ -71,14 +74,16 @@ export interface Faixa {
   dist: TaxDistribution
 }
 
-export interface AnexoIII {
-  proLaboreRate: number
+export interface SimplesTable {
   faixas: Faixa[]
   exportExcludedTaxes: (keyof TaxDistribution)[]
 }
 
-export const ANEXO_III: AnexoIII = {
-  proLaboreRate: 0.28,
+const EXPORT_EXCLUDED: (keyof TaxDistribution)[] = ['iss', 'cofins', 'pis']
+
+// Anexo III — aplicado quando o Fator R ≥ 28%.
+export const ANEXO_III: SimplesTable = {
+  exportExcludedTaxes: EXPORT_EXCLUDED,
   faixas: [
     { rbt12UpTo: 180000, nominal: 0.06, deduct: 0, dist: { cpp: 0.434, iss: 0.335, csll: 0.035, irpj: 0.04, cofins: 0.1282, pis: 0.0278 } },
     { rbt12UpTo: 360000, nominal: 0.112, deduct: 9360, dist: { cpp: 0.434, iss: 0.32, csll: 0.035, irpj: 0.04, cofins: 0.1405, pis: 0.0305 } },
@@ -87,6 +92,17 @@ export const ANEXO_III: AnexoIII = {
     { rbt12UpTo: 3600000, nominal: 0.21, deduct: 125640, dist: { cpp: 0.434, iss: 0.335, csll: 0.035, irpj: 0.04, cofins: 0.1282, pis: 0.0278 } },
     { rbt12UpTo: 4800000, nominal: 0.33, deduct: 648000, dist: { cpp: 0.305, iss: 0, csll: 0.15, irpj: 0.35, cofins: 0.1603, pis: 0.0347 } },
   ],
-  // Tributos desconsiderados no DAS para exportação de serviços.
-  exportExcludedTaxes: ['iss', 'cofins', 'pis'],
+}
+
+// Anexo V — aplicado quando o Fator R < 28% (alíquotas maiores).
+export const ANEXO_V: SimplesTable = {
+  exportExcludedTaxes: EXPORT_EXCLUDED,
+  faixas: [
+    { rbt12UpTo: 180000, nominal: 0.155, deduct: 0, dist: { irpj: 0.25, csll: 0.15, cofins: 0.141, pis: 0.0305, cpp: 0.2885, iss: 0.14 } },
+    { rbt12UpTo: 360000, nominal: 0.18, deduct: 4500, dist: { irpj: 0.23, csll: 0.15, cofins: 0.141, pis: 0.0305, cpp: 0.2785, iss: 0.17 } },
+    { rbt12UpTo: 720000, nominal: 0.195, deduct: 9900, dist: { irpj: 0.24, csll: 0.15, cofins: 0.1492, pis: 0.0323, cpp: 0.2385, iss: 0.19 } },
+    { rbt12UpTo: 1800000, nominal: 0.205, deduct: 17100, dist: { irpj: 0.21, csll: 0.15, cofins: 0.1574, pis: 0.0341, cpp: 0.2385, iss: 0.21 } },
+    { rbt12UpTo: 3600000, nominal: 0.23, deduct: 62100, dist: { irpj: 0.23, csll: 0.125, cofins: 0.141, pis: 0.0305, cpp: 0.2385, iss: 0.235 } },
+    { rbt12UpTo: 4800000, nominal: 0.305, deduct: 540000, dist: { irpj: 0.35, csll: 0.155, cofins: 0.1644, pis: 0.0356, cpp: 0.295, iss: 0 } },
+  ],
 }
