@@ -3,6 +3,10 @@
 export type Market = 'internal' | 'external'
 export type EntryKind = 'revenue' | 'tax' | 'prolabore'
 
+// A quem o lançamento pertence: pessoa jurídica (empresa) ou pessoa física
+// (sócio). O líquido da PJ vira a entrada da PF.
+export type Entity = 'pj' | 'pf'
+
 // Direção do dinheiro: entrada (verde, +) ou desconto/saída (vermelho, −).
 export type Direction = 'in' | 'out'
 
@@ -14,6 +18,7 @@ interface BaseEntry {
   cents: number
   month: number // 0-11
   year: number
+  entity: Entity
 }
 
 // Faturamento (entrada), com mercado interno/externo.
@@ -22,10 +27,19 @@ export interface RevenueEntry extends BaseEntry {
   market: Market
 }
 
-// Desconto avulso lançado manualmente (imposto extra, etc.).
+// Cobrança mensal recorrente de um desconto (só PF). `months` é por quantos
+// meses ela se repete a partir do mês inicial, contando-o; null = sem fim
+// (todo mês em que houver movimento a partir do início).
+export interface Recurrence {
+  months: number | null
+}
+
+// Desconto avulso lançado manualmente (imposto extra, etc.). Na PF pode ser uma
+// cobrança mensal (recurrence), que se repete nos meses seguintes.
 export interface TaxEntry extends BaseEntry {
   kind: 'tax'
   description: string
+  recurrence?: Recurrence
 }
 
 // Pró-labore efetivamente pago no mês (base do INSS/IRRF e do Fator R).
@@ -54,6 +68,17 @@ export interface MonthTaxes {
   accounting: number
   total: number
   net: number
+}
+
+// Um mês da pessoa física: a entrada é o líquido da PJ no mesmo mês e os
+// descontos são lançamentos manuais. Tudo em centavos.
+export interface PersonalMonthGroup {
+  month: number
+  year: number
+  incomeCents: number // líquido da PJ no mês
+  extraItems: TaxEntry[] // descontos manuais
+  extraCents: number
+  netCents: number // incomeCents − extraCents
 }
 
 // Um mês com seus lançamentos e os valores calculados.

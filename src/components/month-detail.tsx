@@ -1,12 +1,4 @@
-import type { ReactNode } from 'react'
-import { Card } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { DetailTable } from '@/components/detail-table'
 import { EntryRow } from '@/components/entry-row'
 import { TaxRow } from '@/components/tax-row'
 import { formatPercent } from '@/lib/format'
@@ -17,27 +9,6 @@ interface MonthDetailProps {
   editingKey?: string
   onEdit: (entry: Entry) => void
   onRequestRemove: (request: RemoveRequest) => void
-}
-
-// Card com a tabela padrão (cabeçalho Item/Valor + coluna de ações). As linhas
-// vêm como children.
-function DetailTable({ children }: { children: ReactNode }) {
-  return (
-    <Card className="overflow-hidden p-0">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted hover:bg-muted">
-            <TableHead className="font-semibold text-foreground">Item</TableHead>
-            <TableHead className="font-semibold text-foreground">Valor</TableHead>
-            <TableHead className="w-0 text-right font-semibold text-foreground">
-              Ações
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>{children}</TableBody>
-      </Table>
-    </Card>
-  )
 }
 
 // Tabela do mês: lançamentos manuais (entradas em verde, descontos em vermelho)

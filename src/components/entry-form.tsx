@@ -13,23 +13,42 @@ import {
 } from '@/components/ui/select'
 import { MONTHS, YEARS, currentMonth, currentYear } from '@/lib/calendar'
 import { formatBRL } from '@/lib/format'
-import type { Entry, EntryKind } from '@/types'
+import type { Entity, Entry, EntryKind, Recurrence } from '@/types'
 
 interface EntryFormProps {
+  entity: Entity
   editing: Entry | null
+  // Mês/ano em foco: um novo lançamento já abre no mês que está sendo visto.
+  defaultMonth?: number
+  defaultYear?: number
   onSubmit: (entry: Entry) => void
   onCancel: () => void
 }
 
 // Formulário de lançamento (usado dentro do modal). Quando `editing` é uma
-// entry, carrega seus dados e vira modo de edição.
-export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
+// entry, carrega seus dados e vira modo de edição. Na pessoa física só há
+// descontos (a entrada é o líquido da PJ), então o seletor de tipo some.
+export function EntryForm({
+  entity,
+  editing,
+  defaultMonth,
+  defaultYear,
+  onSubmit,
+  onCancel,
+}: EntryFormProps) {
+  const isPersonal = entity === 'pf'
   const [valueCents, setValueCents] = useState('')
-  const [month, setMonth] = useState(currentMonth)
-  const [year, setYear] = useState(String(currentYear))
+  const [month, setMonth] = useState(
+    defaultMonth != null ? String(defaultMonth) : currentMonth,
+  )
+  const [year, setYear] = useState(
+    defaultYear != null ? String(defaultYear) : String(currentYear),
+  )
   const [isExternal, setIsExternal] = useState(false)
-  const [kind, setKind] = useState<EntryKind>('revenue')
+  const [kind, setKind] = useState<EntryKind>(isPersonal ? 'tax' : 'revenue')
   const [description, setDescription] = useState('')
+  const [recurring, setRecurring] = useState(false)
+  const [recurringMonths, setRecurringMonths] = useState('') // vazio = sem fim
 
   useEffect(() => {
     if (!editing) return
@@ -40,6 +59,10 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
     if (editing.kind === 'tax') {
       setDescription(editing.description)
       setIsExternal(false)
+      setRecurring(editing.recurrence != null)
+      setRecurringMonths(
+        editing.recurrence?.months != null ? String(editing.recurrence.months) : '',
+      )
     } else if (editing.kind === 'revenue') {
       setIsExternal(editing.market === 'external')
       setDescription('')
@@ -53,16 +76,29 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
     e.preventDefault()
     if (Number(valueCents) <= 0 || month === '' || year === '') return
 
+    const effectiveKind: EntryKind = isPersonal ? 'tax' : kind
     const base = {
       key: editing?.key ?? crypto.randomUUID(),
       cents: Number(valueCents),
       month: Number(month),
       year: Number(year),
+      entity,
     }
+    // Cobrança mensal (só PF): sem número = sem fim; com número = tantos meses.
+    const parsedMonths = parseInt(recurringMonths, 10)
+    const recurrence: Recurrence | undefined =
+      isPersonal && recurring
+        ? { months: Number.isInteger(parsedMonths) && parsedMonths > 0 ? parsedMonths : null }
+        : undefined
     const entry: Entry =
-      kind === 'tax'
-        ? { ...base, kind: 'tax', description: description.trim() }
-        : kind === 'prolabore'
+      effectiveKind === 'tax'
+        ? {
+            ...base,
+            kind: 'tax',
+            description: description.trim(),
+            ...(recurrence ? { recurrence } : {}),
+          }
+        : effectiveKind === 'prolabore'
           ? { ...base, kind: 'prolabore' }
           : { ...base, kind: 'revenue', market: isExternal ? 'external' : 'internal' }
 
@@ -71,19 +107,21 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
 
   return (
     <form className="grid gap-4" onSubmit={handleSubmit}>
-      <div className="grid gap-1.5">
-        <Label>Tipo</Label>
-        <Select value={kind} onValueChange={(value) => setKind(value as EntryKind)}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="revenue">Entrada</SelectItem>
-            <SelectItem value="prolabore">Pró-labore</SelectItem>
-            <SelectItem value="tax">Desconto</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {!isPersonal && (
+        <div className="grid gap-1.5">
+          <Label>Tipo</Label>
+          <Select value={kind} onValueChange={(value) => setKind(value as EntryKind)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="revenue">Entrada</SelectItem>
+              <SelectItem value="prolabore">Pró-labore</SelectItem>
+              <SelectItem value="tax">Desconto</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="grid gap-1.5">
         <Label>Valor</Label>
@@ -149,6 +187,33 @@ export function EntryForm({ editing, onSubmit, onCancel }: EntryFormProps) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+        </div>
+      )}
+      {isPersonal && (
+        <div className="grid gap-3">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="cobranca-mensal"
+              checked={recurring}
+              onCheckedChange={(v) => setRecurring(v === true)}
+            />
+            <Label htmlFor="cobranca-mensal">Cobrança mensal</Label>
+          </div>
+          {recurring && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="qtd-meses">Quantidade de meses</Label>
+              <Input
+                id="qtd-meses"
+                type="text"
+                inputMode="numeric"
+                placeholder="Em branco = repete sem fim"
+                value={recurringMonths}
+                onChange={(e) =>
+                  setRecurringMonths(e.target.value.replace(/\D/g, ''))
+                }
+              />
+            </div>
+          )}
         </div>
       )}
 

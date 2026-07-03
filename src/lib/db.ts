@@ -22,7 +22,12 @@ export async function getAllEntries(): Promise<Entry[]> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE, 'readonly').objectStore(STORE).getAll()
-    request.onsuccess = () => resolve(request.result as Entry[])
+    // Lançamentos salvos antes do suporte a PF/PJ não têm `entity`: tratamos
+    // como pessoa jurídica (todo o histórico anterior era da empresa).
+    request.onsuccess = () => {
+      const rows = request.result as Entry[]
+      resolve(rows.map((e) => (e.entity ? e : { ...e, entity: 'pj' as const })))
+    }
     request.onerror = () => reject(request.error)
   })
 }

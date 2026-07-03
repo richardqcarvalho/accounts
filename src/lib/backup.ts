@@ -37,12 +37,19 @@ export function parseEntriesFile(text: string): Entry[] {
         cents: Number(e.cents),
         month: Number(e.month),
         year: Number(e.year),
+        entity: e.entity === 'pf' ? ('pf' as const) : ('pj' as const),
       }
       if (e.kind === 'tax') {
+        // Cobrança recorrente: um inteiro positivo de meses, ou sem fim (null).
+        const rawMonths = Number(e.recurrence?.months)
+        const recurrence = e.recurrence
+          ? { months: Number.isInteger(rawMonths) && rawMonths > 0 ? rawMonths : null }
+          : undefined
         return {
           ...base,
           kind: 'tax',
           description: typeof e.description === 'string' ? e.description : '',
+          ...(recurrence ? { recurrence } : {}),
         }
       }
       if (e.kind === 'prolabore') {

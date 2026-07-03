@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MONTHS } from '@/lib/calendar'
 import { cn } from '@/lib/utils'
-import type { MonthGroup } from '@/types'
 
 interface Edges {
   left: boolean
@@ -21,7 +20,7 @@ function maskFor({ left, right }: Edges): string | undefined {
 }
 
 interface MonthTabsProps {
-  groups: MonthGroup[]
+  groups: { month: number; year: number }[]
   selectedKey: string
   onSelect: (key: string) => void
 }

@@ -1,16 +1,17 @@
 import { Card, CardContent } from '@/components/ui/card'
-import { formatBRL, formatReais } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import type { MonthGroup } from '@/types'
 
-// Cards de resumo do mês: faturamento, total de descontos e líquido.
-export function MonthSummary({ group }: { group: MonthGroup }) {
-  const items: { label: string; value: string; accent?: boolean }[] = [
-    { label: 'Faturamento', value: formatBRL(group.cents) },
-    { label: 'Descontos', value: formatReais(group.taxes.total) },
-    { label: 'Líquido', value: formatReais(group.taxes.net), accent: true },
-  ]
+export interface SummaryItem {
+  label: string
+  value: string
+  // Destaca o valor pelo sinal (usado no líquido): verde quando sobra, vermelho
+  // quando o mês fecha no negativo.
+  tone?: 'positive' | 'negative'
+}
 
+// Cards de resumo do mês. Os itens (faturamento/entrada, descontos, líquido)
+// são montados por quem chama, conforme a visão (PJ ou PF).
+export function MonthSummary({ items }: { items: SummaryItem[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       {items.map((item) => (
@@ -20,7 +21,8 @@ export function MonthSummary({ group }: { group: MonthGroup }) {
             <p
               className={cn(
                 'mt-1 text-2xl font-semibold tabular-nums',
-                item.accent && 'text-green-600 dark:text-green-400',
+                item.tone === 'positive' && 'text-green-600 dark:text-green-400',
+                item.tone === 'negative' && 'text-red-600 dark:text-red-400',
               )}
             >
               {item.value}
