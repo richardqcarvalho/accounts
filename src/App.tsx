@@ -33,8 +33,16 @@ import { useEntries } from '@/hooks/use-entries'
 import { useTheme } from '@/hooks/use-theme'
 import { buildMonthlyGroups } from '@/lib/grouping'
 import { buildPersonalGroups } from '@/lib/personal'
+import { currentMonth, currentYear } from '@/lib/calendar'
 import { formatBRL, formatReais } from '@/lib/format'
-import type { Entity, Entry, RemoveRequest } from '@/types'
+import type {
+  DescontoOccurrence,
+  Entity,
+  Entry,
+  MonthOverride,
+  Recurrence,
+  RemoveRequest,
+} from '@/types'
 
 const keyOf = (x: { year: number; month: number }) => `${x.year}-${x.month}`
 
@@ -43,9 +51,17 @@ function App() {
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [entity, setEntity] = useState<Entity>('pf')
   const [editing, setEditing] = useState<Entry | null>(null)
+  // Ocorrência (mês) sendo editada numa série da PF; null = edição normal.
+  const [editingOccurrence, setEditingOccurrence] =
+    useState<DescontoOccurrence | null>(null)
   const [open, setOpen] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<RemoveRequest | null>(null)
+  // Salvamento aguardando escolha de escopo (mês vs série toda).
+  const [pendingSave, setPendingSave] = useState<{
+    entry: Entry
+    occurrence: DescontoOccurrence
+  } | null>(null)
 
   const pjGroups = useMemo(
     () => buildMonthlyGroups(entries.filter((e) => e.entity === 'pj')),
@@ -58,9 +74,14 @@ function App() {
 
   const isPersonal = entity === 'pf'
   const months = isPersonal ? pfGroups : pjGroups
-  // Seleções tipadas por visão para o TS estreitar corretamente cada bloco.
+  // Seleção: o mês escolhido; sem escolha, começa no mês atual (ou no mais
+  // recente, se o atual não estiver na lista). Tipada por visão p/ o TS estreitar.
+  const currentKey = `${currentYear}-${currentMonth}`
   const pick = <T extends { month: number; year: number }>(list: T[]) =>
-    list.find((g) => keyOf(g) === selectedKey) ?? list[0] ?? null
+    list.find((g) => keyOf(g) === selectedKey) ??
+    list.find((g) => keyOf(g) === currentKey) ??
+    list[0] ??
+    null
   const pjSelected = pick(pjGroups)
   const pfSelected = pick(pfGroups)
   const selected = isPersonal ? pfSelected : pjSelected
@@ -91,29 +112,164 @@ function App() {
 
   function openNew() {
     setEditing(null)
+    setEditingOccurrence(null)
     setOpen(true)
   }
 
   function openEdit(entry: Entry) {
     setEditing(entry)
+    setEditingOccurrence(null)
+    setOpen(true)
+  }
+
+  // Edição de um mês específico de uma série (PF): pré-preenche aquele mês.
+  function openEditOccurrence(occurrence: DescontoOccurrence) {
+    setEditing(occurrence.entry)
+    setEditingOccurrence(occurrence)
     setOpen(true)
   }
 
   function closeModal() {
     setOpen(false)
     setEditing(null)
+    setEditingOccurrence(null)
   }
 
   function handleSubmit(entry: Entry) {
+    // Editando um mês de uma série → pergunta o escopo (só o mês ou a série).
+    if (editingOccurrence?.isSeries) {
+      setPendingSave({ entry, occurrence: editingOccurrence })
+      return
+    }
     saveEntry(entry)
     setSelectedKey(keyOf(entry)) // foca no mês do lançamento
     closeModal()
   }
 
+  // Aplica o salvamento após escolher o escopo no modal.
+  function saveScope(scope: 'month' | 'forward' | 'series') {
+    const base = editing
+    if (!pendingSave || !base || base.kind !== 'tax') {
+      setPendingSave(null)
+      return
+    }
+    const form = pendingSave.entry
+    const description = form.kind === 'tax' ? form.description : base.description
+    const formItems = form.kind === 'tax' ? form.items : undefined
+    const ci = pendingSave.occurrence.calIndex
+    const offset = ci - (base.year * 12 + base.month)
+    // "Deste mês em diante" a partir da origem é o mesmo que a série toda.
+    const effective = scope === 'forward' && offset === 0 ? 'series' : scope
+
+    if (effective === 'month') {
+      // Ajuste só deste mês: total e subvalores (com os meses restantes já como
+      // estão exibidos) guardados como override.
+      const override: MonthOverride = {
+        calIndex: ci,
+        cents: form.cents,
+        ...(formItems && formItems.length > 0 ? { items: formItems } : {}),
+      }
+      saveEntry({
+        ...base,
+        overrides: [
+          ...(base.overrides ?? []).filter((o) => o.calIndex !== ci),
+          override,
+        ],
+      })
+    } else if (effective === 'forward') {
+      // Divide a série em ci: o trecho antigo termina em ci-1 e um novo começa
+      // em ci com os valores editados (continuando a projeção dali pra frente).
+      const count = offset // meses de origem até ci-1
+      const truncatedItems = base.items?.map((it) =>
+        it.months != null ? { ...it, months: Math.min(it.months, count) } : it,
+      )
+      saveEntry({
+        ...base,
+        ...(base.recurrence ? { recurrence: { months: count } } : {}),
+        ...(truncatedItems ? { items: truncatedItems } : {}),
+        overrides: base.overrides?.filter((o) => o.calIndex < ci),
+        skips: base.skips?.filter((s) => s < ci),
+      })
+      let recurrence: Recurrence | undefined
+      if (base.recurrence) {
+        recurrence =
+          base.recurrence.months == null
+            ? { months: null }
+            : { months: base.recurrence.months - offset }
+      }
+      const forwardSkips = base.skips?.filter((s) => s >= ci)
+      saveEntry({
+        key: crypto.randomUUID(),
+        entity: base.entity,
+        kind: 'tax',
+        month: ci % 12,
+        year: Math.floor(ci / 12),
+        cents: form.cents,
+        description,
+        ...(recurrence ? { recurrence } : {}),
+        ...(formItems && formItems.length > 0 ? { items: formItems } : {}),
+        ...(forwardSkips && forwardSkips.length > 0 ? { skips: forwardSkips } : {}),
+      })
+    } else {
+      // Série toda: mescla por rótulo, preservando itens que ainda não aparecem
+      // neste mês (já expiraram antes dele). Os meses restantes editados voltam a
+      // ser contados desde a origem (restantes + offset).
+      let items: typeof base.items
+      if (formItems && formItems.length > 0) {
+        const remaining = new Map(formItems.map((i) => [i.label, i]))
+        items = (base.items ?? []).map((bi) => {
+          const fi = remaining.get(bi.label)
+          if (!fi) return bi // não visível neste mês: mantém como está
+          remaining.delete(bi.label)
+          return {
+            label: bi.label,
+            cents: fi.cents,
+            ...(fi.months != null
+              ? { months: fi.months + offset }
+              : bi.months != null
+                ? { months: bi.months }
+                : {}),
+          }
+        })
+        for (const fi of remaining.values()) {
+          items.push({
+            label: fi.label,
+            cents: fi.cents,
+            ...(fi.months != null ? { months: fi.months + offset } : {}),
+          })
+        }
+      }
+      saveEntry({
+        ...base,
+        description,
+        cents:
+          items && items.length > 0
+            ? items.reduce((s, i) => s + i.cents, 0)
+            : form.cents,
+        ...(items && items.length > 0 ? { items } : {}),
+      })
+    }
+    setSelectedKey(`${Math.floor(ci / 12)}-${ci % 12}`)
+    setPendingSave(null)
+    closeModal()
+  }
+
   function confirmRemove() {
     if (pendingDelete) {
-      removeEntry(pendingDelete.key)
-      if (pendingDelete.key === editing?.key) closeModal()
+      if (pendingDelete.calIndex != null) {
+        // Excluir apenas este mês da série: marca o mês como pulado.
+        const entry = entries.find((e) => e.key === pendingDelete.key)
+        const ci = pendingDelete.calIndex
+        if (entry && entry.kind === 'tax') {
+          saveEntry({
+            ...entry,
+            skips: [...(entry.skips ?? []).filter((c) => c !== ci), ci],
+          })
+        }
+      } else {
+        removeEntry(pendingDelete.key)
+        if (pendingDelete.key === editing?.key) closeModal()
+      }
     }
     setPendingDelete(null)
   }
@@ -149,7 +305,8 @@ function App() {
                   <PersonalDetail
                     group={pfSelected}
                     editingKey={editing?.key}
-                    onEdit={openEdit}
+                    editingCalIndex={editingOccurrence?.calIndex}
+                    onEdit={openEditOccurrence}
                     onRequestRemove={setPendingDelete}
                   />
                 )
@@ -192,10 +349,13 @@ function App() {
               </DialogDescription>
             </DialogHeader>
             <EntryForm
+              key={`${editing?.key ?? 'new'}:${editingOccurrence?.calIndex ?? ''}`}
               entity={entity}
               editing={editing}
               defaultMonth={selected?.month}
               defaultYear={selected?.year}
+              occurrence={editingOccurrence ?? undefined}
+              lockPeriod={editingOccurrence?.isSeries ?? false}
               onSubmit={handleSubmit}
               onCancel={closeModal}
             />
@@ -220,6 +380,34 @@ function App() {
               <AlertDialogAction variant="destructive" onClick={confirmRemove}>
                 Excluir
               </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={pendingSave !== null}
+          onOpenChange={(o) => !o && setPendingSave(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Salvar alteração</AlertDialogTitle>
+              <AlertDialogDescription>
+                Este é um lançamento recorrente. Onde aplicar a alteração?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="grid gap-2">
+              <Button variant="outline" onClick={() => saveScope('month')}>
+                Somente este mês
+              </Button>
+              <Button variant="outline" onClick={() => saveScope('forward')}>
+                Deste mês em diante
+              </Button>
+              <Button variant="outline" onClick={() => saveScope('series')}>
+                A série toda
+              </Button>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

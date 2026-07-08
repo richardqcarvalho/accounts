@@ -22,6 +22,11 @@ interface EntryRowProps {
   entry: Entry
   editing: boolean
   direction?: Direction
+  // Valor exibido; padrão é `entry.cents`. Usado quando a linha mostra um total
+  // do mês diferente do valor cheio do lançamento (desconto detalhado por meses).
+  displayCents?: number
+  removeLabel?: string // rótulo da exclusão (ex.: "Excluir este mês")
+  onRemoveSeries?: () => void // quando presente, adiciona "Excluir a série"
   onEdit: (entry: Entry) => void
   onRemove: (key: string) => void
 }
@@ -34,6 +39,9 @@ export function EntryRow({
   entry,
   editing,
   direction,
+  displayCents,
+  removeLabel,
+  onRemoveSeries,
   onEdit,
   onRemove,
 }: EntryRowProps) {
@@ -44,7 +52,7 @@ export function EntryRow({
       <TableCell className="text-muted-foreground">{label}</TableCell>
       <TableCell className={`tabular-nums ${direction ? TONE[direction] : ''}`}>
         {direction ? SIGN[direction] : ''}
-        {formatBRL(entry.cents)}
+        {formatBRL(displayCents ?? entry.cents)}
       </TableCell>
       <TableCell className="w-0 text-right">
         <DropdownMenu>
@@ -69,8 +77,14 @@ export function EntryRow({
               onSelect={() => onRemove(entry.key)}
             >
               <Trash2 className="size-4" />
-              Excluir
+              {removeLabel ?? 'Excluir'}
             </DropdownMenuItem>
+            {onRemoveSeries && (
+              <DropdownMenuItem variant="destructive" onSelect={onRemoveSeries}>
+                <Trash2 className="size-4" />
+                Excluir a série
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>

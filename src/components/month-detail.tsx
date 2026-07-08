@@ -1,3 +1,4 @@
+import { DescontoRows } from '@/components/desconto-rows'
 import { DetailTable } from '@/components/detail-table'
 import { EntryRow } from '@/components/entry-row'
 import { TaxRow } from '@/components/tax-row'
@@ -47,9 +48,24 @@ export function MonthDetail({
           'in',
         ),
       )}
-      {group.extraItems.map((entry) =>
-        renderEntry(entry, entry.description || 'Desconto', 'out'),
-      )}
+      {group.extraItems.map((entry) => {
+        const label = entry.description || 'Desconto'
+        return (
+          <DescontoRows
+            key={entry.key}
+            entry={entry}
+            label={label}
+            cents={entry.cents}
+            items={entry.items ?? []}
+            editing={entry.key === editingKey}
+            removeThisLabel="Excluir"
+            onEdit={() => onEdit(entry)}
+            onRemoveThis={() =>
+              onRequestRemove({ key: entry.key, label, cents: entry.cents })
+            }
+          />
+        )
+      })}
 
       <TaxRow label="DARF unificado" reais={taxes.darf} direction="out" />
       <TaxRow label="INSS" reais={taxes.inss} indent={1} />

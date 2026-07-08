@@ -34,12 +34,34 @@ export interface Recurrence {
   months: number | null
 }
 
+// Um valor que compõe um desconto detalhado (ex.: INSS e IRRF dentro do DARF).
+// `months` é a quantidade de meses opcional daquele valor.
+export interface TaxComponent {
+  label: string
+  cents: number
+  months?: number
+}
+
+// Ajuste de um mês específico de uma série (edição "somente este mês"): substitui
+// o total e os subvalores projetados naquele mês. `calIndex` = ano*12 + mês.
+export interface MonthOverride {
+  calIndex: number
+  cents: number
+  items?: TaxComponent[]
+}
+
 // Desconto avulso lançado manualmente (imposto extra, etc.). Na PF pode ser uma
-// cobrança mensal (recurrence), que se repete nos meses seguintes.
+// cobrança mensal (recurrence), que se repete nos meses seguintes. Quando
+// detalhado, `items` traz os valores que compõem o total (`cents` = soma deles).
+// `overrides` guarda ajustes de meses específicos; `skips` são meses removidos
+// individualmente (calIndex).
 export interface TaxEntry extends BaseEntry {
   kind: 'tax'
   description: string
   recurrence?: Recurrence
+  items?: TaxComponent[]
+  overrides?: MonthOverride[]
+  skips?: number[]
 }
 
 // Pró-labore efetivamente pago no mês (base do INSS/IRRF e do Fator R).
@@ -70,13 +92,25 @@ export interface MonthTaxes {
   net: number
 }
 
+// Uma ocorrência de um desconto num mês. `entry` é o lançamento original (para
+// editar/excluir a série toda); `cents`/`items` são o total e os subvalores
+// daquele mês (com `months` já convertido para os meses restantes). `isSeries`
+// indica que o desconto aparece em vários meses (recorrente ou com parcelas).
+export interface DescontoOccurrence {
+  entry: TaxEntry
+  calIndex: number // ano*12 + mês desta ocorrência
+  cents: number
+  items: TaxComponent[] // subvalores do mês (vazio quando não detalhado)
+  isSeries: boolean
+}
+
 // Um mês da pessoa física: a entrada é o líquido da PJ no mesmo mês e os
 // descontos são lançamentos manuais. Tudo em centavos.
 export interface PersonalMonthGroup {
   month: number
   year: number
   incomeCents: number // líquido da PJ no mês
-  extraItems: TaxEntry[] // descontos manuais
+  extraItems: DescontoOccurrence[] // descontos manuais (ocorrência do mês)
   extraCents: number
   netCents: number // incomeCents − extraCents
 }
@@ -96,11 +130,13 @@ export interface MonthGroup {
   taxes: MonthTaxes
 }
 
-// Pedido de exclusão aguardando confirmação.
+// Pedido de exclusão aguardando confirmação. Com `calIndex`, remove apenas
+// aquele mês de uma série (skip); sem ele, apaga o lançamento inteiro.
 export interface RemoveRequest {
   key: string
   label: string
   cents: number
+  calIndex?: number
 }
 
 export type Theme = 'light' | 'dark' | 'system'

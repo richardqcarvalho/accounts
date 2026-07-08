@@ -28,6 +28,7 @@ interface MonthTabsProps {
 // Barra de abas (pills) com os meses que têm lançamentos, mais recente primeiro.
 export function MonthTabs({ groups, selectedKey, onSelect }: MonthTabsProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const activeRef = useRef<HTMLButtonElement>(null)
   const [edges, setEdges] = useState<Edges>({ left: false, right: false })
 
   useEffect(() => {
@@ -38,14 +39,34 @@ export function MonthTabs({ groups, selectedKey, onSelect }: MonthTabsProps) {
         left: el.scrollLeft > 0,
         right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
       })
+    // Roda a barra na horizontal com a rolagem vertical do mouse (sem shift),
+    // deixando a página rolar quando já está numa das pontas.
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return
+      const max = el.scrollWidth - el.clientWidth
+      if (max <= 0) return
+      const atStart = el.scrollLeft <= 0
+      const atEnd = el.scrollLeft >= max - 1
+      if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return
+      e.preventDefault()
+      el.scrollLeft += e.deltaY
+    }
     update()
     el.addEventListener('scroll', update, { passive: true })
+    el.addEventListener('wheel', onWheel, { passive: false })
     window.addEventListener('resize', update)
     return () => {
       el.removeEventListener('scroll', update)
+      el.removeEventListener('wheel', onWheel)
       window.removeEventListener('resize', update)
     }
   }, [groups])
+
+  // Garante que a aba selecionada (inclusive quando já vem pré-selecionada) fique
+  // visível. `scroll-px-8` alinha fora do fade das bordas.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [selectedKey, groups])
 
   const mask = maskFor(edges)
 
@@ -53,7 +74,7 @@ export function MonthTabs({ groups, selectedKey, onSelect }: MonthTabsProps) {
     <div className="border-b">
       <div
         ref={scrollRef}
-        className="flex gap-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex scroll-px-8 gap-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={{ maskImage: mask, WebkitMaskImage: mask }}
       >
         {groups.map((group) => {
@@ -62,6 +83,7 @@ export function MonthTabs({ groups, selectedKey, onSelect }: MonthTabsProps) {
           return (
             <button
               key={key}
+              ref={active ? activeRef : undefined}
               type="button"
               onClick={() => onSelect(key)}
               className={cn(

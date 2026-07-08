@@ -1,12 +1,14 @@
+import { DescontoRows } from '@/components/desconto-rows'
 import { DetailTable } from '@/components/detail-table'
-import { EntryRow } from '@/components/entry-row'
 import { TaxRow } from '@/components/tax-row'
-import type { Entry, PersonalMonthGroup, RemoveRequest } from '@/types'
+import { MONTHS } from '@/lib/calendar'
+import type { DescontoOccurrence, PersonalMonthGroup, RemoveRequest } from '@/types'
 
 interface PersonalDetailProps {
   group: PersonalMonthGroup
   editingKey?: string
-  onEdit: (entry: Entry) => void
+  editingCalIndex?: number
+  onEdit: (occurrence: DescontoOccurrence) => void
   onRequestRemove: (request: RemoveRequest) => void
 }
 
@@ -16,10 +18,11 @@ interface PersonalDetailProps {
 export function PersonalDetail({
   group,
   editingKey,
+  editingCalIndex,
   onEdit,
   onRequestRemove,
 }: PersonalDetailProps) {
-  const groupCal = group.year * 12 + group.month
+  const monthLabel = (ci: number) => `${MONTHS[ci % 12]} ${Math.floor(ci / 12)}`
   return (
     <DetailTable>
       <TaxRow
@@ -27,31 +30,45 @@ export function PersonalDetail({
         reais={group.incomeCents / 100}
         direction="in"
       />
-      {group.extraItems.map((entry) => {
+      {group.extraItems.map((occ) => {
+        const { entry } = occ
         const base = entry.description || 'Desconto'
         // Cobrança mensal: mostra a parcela (3/12) ou "mensal" quando sem fim.
         let label = base
         if (entry.recurrence) {
-          const n = groupCal - (entry.year * 12 + entry.month) + 1
+          const n = occ.calIndex - (entry.year * 12 + entry.month) + 1
           label =
             entry.recurrence.months != null
               ? `${base} (${n}/${entry.recurrence.months})`
               : `${base} (mensal)`
         }
         return (
-          <EntryRow
+          <DescontoRows
             key={entry.key}
-            label={label}
             entry={entry}
-            direction="out"
-            editing={entry.key === editingKey}
-            onEdit={onEdit}
-            onRemove={() =>
+            label={label}
+            cents={occ.cents}
+            items={occ.items}
+            editing={entry.key === editingKey && occ.calIndex === editingCalIndex}
+            removeThisLabel={occ.isSeries ? 'Excluir este mês' : 'Excluir'}
+            onEdit={() => onEdit(occ)}
+            onRemoveThis={() =>
               onRequestRemove({
                 key: entry.key,
-                label: entry.recurrence ? `${base} (cobrança mensal)` : base,
-                cents: entry.cents,
+                label: occ.isSeries ? `${base} · ${monthLabel(occ.calIndex)}` : base,
+                cents: occ.cents,
+                ...(occ.isSeries ? { calIndex: occ.calIndex } : {}),
               })
+            }
+            onRemoveSeries={
+              occ.isSeries
+                ? () =>
+                    onRequestRemove({
+                      key: entry.key,
+                      label: `${base} — série inteira`,
+                      cents: entry.cents,
+                    })
+                : undefined
             }
           />
         )

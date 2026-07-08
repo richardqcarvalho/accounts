@@ -1,4 +1,19 @@
-import type { Entry } from '@/types'
+import type { Entry, MonthOverride, TaxComponent } from '@/types'
+
+// Normaliza uma lista de subvalores (itens de um desconto detalhado).
+function parseComponents(raw: unknown): TaxComponent[] {
+  return (Array.isArray(raw) ? raw : [])
+    .map((c: { label?: unknown; cents?: unknown; months?: unknown }) => {
+      const item: TaxComponent = {
+        label: typeof c.label === 'string' ? c.label : '',
+        cents: Number(c.cents),
+      }
+      const months = Number(c.months)
+      if (Number.isInteger(months) && months > 0) item.months = months
+      return item
+    })
+    .filter((it: TaxComponent) => Number.isFinite(it.cents) && it.cents > 0)
+}
 
 // Gera e baixa um arquivo JSON com todos os lançamentos.
 export function downloadEntries(entries: Entry[]): void {
@@ -45,11 +60,36 @@ export function parseEntriesFile(text: string): Entry[] {
         const recurrence = e.recurrence
           ? { months: Number.isInteger(rawMonths) && rawMonths > 0 ? rawMonths : null }
           : undefined
+        // Desconto detalhado: itens válidos e total recalculado a partir deles.
+        const items = parseComponents(e.items)
+        // Ajustes por mês e meses pulados de uma série.
+        const overrides: MonthOverride[] = (Array.isArray(e.overrides) ? e.overrides : [])
+          .map((o: { calIndex?: unknown; cents?: unknown; items?: unknown }) => {
+            const ovItems = parseComponents(o.items)
+            return {
+              calIndex: Number(o.calIndex),
+              cents: ovItems.length > 0
+                ? ovItems.reduce((s, it) => s + it.cents, 0)
+                : Number(o.cents),
+              ...(ovItems.length > 0 ? { items: ovItems } : {}),
+            }
+          })
+          .filter(
+            (o: MonthOverride) =>
+              Number.isInteger(o.calIndex) && Number.isFinite(o.cents) && o.cents > 0,
+          )
+        const skips: number[] = (Array.isArray(e.skips) ? e.skips : [])
+          .map((s: unknown) => Number(s))
+          .filter((n: number) => Number.isInteger(n))
         return {
           ...base,
+          cents: items.length > 0 ? items.reduce((s, it) => s + it.cents, 0) : base.cents,
           kind: 'tax',
           description: typeof e.description === 'string' ? e.description : '',
           ...(recurrence ? { recurrence } : {}),
+          ...(items.length > 0 ? { items } : {}),
+          ...(overrides.length > 0 ? { overrides } : {}),
+          ...(skips.length > 0 ? { skips } : {}),
         }
       }
       if (e.kind === 'prolabore') {
