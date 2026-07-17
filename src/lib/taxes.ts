@@ -55,10 +55,10 @@ export function rbt12ForMonth(
   return sum === 0 ? currentRevenue * 12 : sum
 }
 
-// O DAS do Simples é truncado nos centavos (a fração é descartada), diferente
-// do IRRF, que é arredondado. Truncar reproduz o valor da Receita/PGDAS-D.
-function truncCents(reais: number): number {
-  return Math.floor(reais * 100) / 100
+// O DAS do Simples é arredondado para 2 casas decimais, conforme
+// a IN RFB nº 1.866/2018 e o PGDAS-D.
+function roundCents(reais: number): number {
+  return Math.round(reais * 100) / 100
 }
 
 function faixaFor(rbt12: number, table: SimplesTable): Faixa {
@@ -95,7 +95,7 @@ export function calcSimples({
   let dasInternal = 0
   if (internal > 0) {
     internalRate = effectiveRate(rbt12Internal, faixaFor(rbt12Internal, table))
-    dasInternal = truncCents(internalRate * internal)
+    dasInternal = roundCents(internalRate * internal)
   }
 
   let externalRate = 0
@@ -107,7 +107,7 @@ export function calcSimples({
       0,
     )
     externalRate = effectiveRate(rbt12External, faixa) * (1 - excludedShare)
-    dasExternal = truncCents(externalRate * external)
+    dasExternal = roundCents(externalRate * external)
   }
 
   return { internalRate, externalRate, dasInternal, dasExternal }
