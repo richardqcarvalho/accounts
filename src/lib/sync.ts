@@ -46,16 +46,16 @@ interface Outer {
   payload: SecretPayload
 }
 
-// Cria um Gist público com um payload cifrado vazio (lista vazia de entries).
-// Retorna id + URL pra ser persistido localmente.
-export async function createGist(password: string): Promise<{
-  id: string
-  url: string
-}> {
+// Cria um Gist público cifrado. `initial` permite popular na primeira write
+// pra não criar Gist vazio quando o usuário já tem entries no device.
+export async function createGist(
+  password: string,
+  initial: Entry[] = [],
+): Promise<{ id: string; url: string }> {
   const outer: Outer = {
     v: 1,
     at: new Date().toISOString(),
-    payload: await encrypt(JSON.stringify([]), password),
+    payload: await encrypt(JSON.stringify(initial), password),
   }
   const gist: Gist = await request(`${API}/gists`, {
     method: 'POST',
@@ -71,8 +71,6 @@ export async function createGist(password: string): Promise<{
 
 export interface LoadedGist {
   entries: Entry[]
-  // Fingerprint visual do payload; usado pra confirmar que a senha
-  // bate com o Gist esperado (antes mesmo de abrir).
   fingerprint: string
   updatedAt: string
 }

@@ -50,7 +50,7 @@ const keyOf = (x: { year: number; month: number }) => `${x.year}-${x.month}`
 
 function App() {
   const sync = useSync()
-  const { entries, saveEntry, removeEntry, importEntries } = useEntries({
+  const { entries, saveEntry, removeEntry, importEntries, resetTo } = useEntries({
     onChange: (next) => sync.scheduleSave(next),
   })
   const { theme, resolvedTheme, setTheme } = useTheme()
@@ -287,7 +287,7 @@ function App() {
             <h1 className="text-2xl font-semibold">Lançamentos</h1>
             <div className="flex flex-wrap gap-2">
               <ThemeToggle theme={theme} setTheme={setTheme} />
-              <SyncButton sync={sync} onLoadFromCloud={importEntries} />
+              <SyncButton sync={sync} localEntries={entries} onLoadFromCloud={resetTo} />
               <BackupButtons entries={entries} onImport={importEntries} />
               <Button onClick={openNew}>
                 <Plus className="size-4" />

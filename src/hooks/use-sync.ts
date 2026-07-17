@@ -33,76 +33,88 @@ export interface UseSyncReturn {
   status: SyncStatus
   lastError: string | null
   hasPassword: boolean
-  connect: (
-    gistId: string,
-    fingerprint: string,
-    url: string,
-    password: string,
-  ) => Promise<void>
-  create: (password: string) => Promise<{ id: string; url: string }>
-  tryLoad: (password: string) => Promise<LoadedGist>
+  create: (password: string, initialEntries?: Entry[]) => Promise<{ id: string; url: string }>
+  load: (gistId: string, password: string) => Promise<LoadedGist>
+  scheduleSave: (entries: Entry[]) => void
+  flushSave: (entries: Entry[]) => Promise<void>
   peekFingerprint: (gistId: string) => Promise<string | null>
   disconnect: () => void
-  scheduleSave: (entries: Entry[]) => void
 }
 
 const DEBOUNCE_MS = 2000
+const FILENAME = 'accounts.json'
 
-export function useSync(): UseSyncReturn {
-  const [meta, setMeta] = useState<SyncMeta | null>(() => loadSyncMeta())
+export function useSync(initialId?: string): UseSyncReturn {
+  const [meta, setMeta] = useState<SyncMeta | null>(() => {
+    const stored = loadSyncMeta()
+    if (stored) return stored
+    if (initialId) {
+      const m: SyncMeta = { gistId: initialId, url: `https://gist.github.com/${initialId}`, fingerprint: null }
+      saveSyncMeta(m)
+      return m
+    }
+    return null
+  })
   const [status, setStatus] = useState<SyncStatus>('idle')
   const [lastError, setLastError] = useState<string | null>(null)
-  // Mantém a senha apenas em memória; perde-se no reload (segurança).
   const passwordRef = useRef<string | null>(null)
   const pendingEntries = useRef<Entry[] | null>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const abortedRef = useRef(0) // token pra cancelar saves pendentes
+  const cancelledRef = useRef(0)
 
-  // Ao montar, carrega do localStorage.
-  useEffect(() => {
-    setMeta(loadSyncMeta())
-  }, [])
-
-  // Quando `meta` muda (criar/conectar/desconectar), persiste.
+  // Quando meta muda, persiste/clear.
   useEffect(() => {
     if (meta) saveSyncMeta(meta)
     else clearSyncMeta()
-  }, [meta])
+  }, [meta?.gistId])
 
-  // Debounced save: agenda uma escrita. Só 1 request por vez; chamadas
-  // subsequentes resetam o timer, descartando a entrada anterior.
-  const scheduleSave = useCallback(
-    (entries: Entry[]) => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current)
-      pendingEntries.current = entries
-      const tick = ++abortedRef.current
-      debounceTimer.current = setTimeout(() => {
-        if (tick !== abortedRef.current) return
-        const list = pendingEntries.current
-        if (!list || !passwordRef.current || !meta?.gistId) return
-        setStatus('saving')
-        setLastError(null)
-        saveGist(meta.gistId, passwordRef.current, list)
-          .then(() => {
-            setMeta((m) => (m ? { ...m, fingerprint: null } : m))
-            setStatus('ok')
-          })
-          .catch((err) => {
-            const msg = err instanceof Error ? err.message : String(err)
-            setLastError(msg)
-            setStatus('error')
-          })
-      }, DEBOUNCE_MS)
-    },
-    [meta?.gistId],
-  )
+  // Debounced save: agenda. Um ticket (cancelledRef) cancela saves antigos.
+  const scheduleSave = useCallback((entries: Entry[]) => {
+    if (!meta?.gistId || !passwordRef.current) return
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    pendingEntries.current = entries
+    const ticket = ++cancelledRef.current
+    debounceTimer.current = setTimeout(() => {
+      if (ticket !== cancelledRef.current) return
+      const list = pendingEntries.current
+      const pwd = passwordRef.current
+      if (!list || !pwd || !meta.gistId) return
+      setStatus('saving')
+      setLastError(null)
+      saveGist(meta.gistId, pwd, list)
+        .then(() => {
+          setMeta((m) => (m ? { ...m, fingerprint: null } : m))
+          setStatus('ok')
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          setLastError(msg)
+          setStatus('error')
+        })
+    }, DEBOUNCE_MS)
+  }, [meta?.gistId])
 
-  // Cria um Gist vazio cifrado; o caller decide a senha.
-  const create = useCallback(async (password: string) => {
+  const flushSave = useCallback(async (entries: Entry[]) => {
+    if (!meta?.gistId || !passwordRef.current) return
+    setStatus('saving')
+    setLastError(null)
+    try {
+      await saveGist(meta.gistId, passwordRef.current, entries)
+      setMeta((m) => (m ? { ...m, fingerprint: null } : m))
+      setStatus('ok')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setLastError(msg)
+      setStatus('error')
+      throw err
+    }
+  }, [meta?.gistId])
+
+  const create = useCallback(async (password: string, initialEntries: Entry[] = []) => {
     setStatus('creating')
     setLastError(null)
     try {
-      const { id, url } = await createGist(password)
+      const { id, url } = await createGist(password, initialEntries)
       passwordRef.current = password
       setMeta({ gistId: id, url, fingerprint: null })
       setStatus('ok')
@@ -115,86 +127,49 @@ export function useSync(): UseSyncReturn {
     }
   }, [])
 
-  // Conecta a um Gist existente (com id + fingerprint + url conhecidos) e
-  // guarda a senha na memória da sessão.
-  const connect = useCallback(
-    async (
-      gistId: string,
-      fingerprint: string,
-      url: string,
-      password: string,
-    ) => {
-      setStatus('connecting')
-      setLastError(null)
-      try {
-        passwordRef.current = password
-        setMeta({ gistId, url, fingerprint })
-        setStatus('ok')
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setLastError(msg)
-        setStatus('error')
-        throw err
-      }
-    },
-    [],
-  )
+  const load = useCallback(async (gistId: string, password: string): Promise<LoadedGist> => {
+    setStatus('loading')
+    setLastError(null)
+    try {
+      const loaded = await loadGist(gistId, password)
+      passwordRef.current = password
+      setMeta({ gistId, url: `https://gist.github.com/${gistId}`, fingerprint: loaded.fingerprint })
+      setStatus('ok')
+      return loaded
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setLastError(msg)
+      setStatus('error')
+      throw err
+    }
+  }, [])
 
-  // Tenta carregar (descriptografar) o Gist conectado.
-  const tryLoad = useCallback(
-    async (password: string): Promise<LoadedGist> => {
-      if (!meta) throw new Error('nenhum Gist conectado')
-      setStatus('loading')
-      setLastError(null)
-      try {
-        const loaded = await loadGist(meta.gistId, password)
-        passwordRef.current = password
-        setMeta({ ...meta, fingerprint: loaded.fingerprint })
-        setStatus('ok')
-        return loaded
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setLastError(msg)
-        setStatus('error')
-        throw err
-      }
-    },
-    [meta],
-  )
-
-  // Olha só o fingerprint (útil pra pré-verificar antes de pedir senha).
-  const peekFingerprint = useCallback(
-    async (gistId: string): Promise<string | null> => {
-      try {
-        const raw = await fetch(
-          `https://api.github.com/gists/${gistId}`,
-          {
-            headers: {
-              Accept: 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-            },
-          },
-        )
-        if (!raw.ok) return null
-        const body: {
-          files?: Record<string, { content?: string }>
-        } = await raw.json()
-        const ct = body.files?.['accounts.json']?.content
-        if (!ct) return null
-        const { fingerprint } = await import('@/lib/crypto')
-        return fingerprint(JSON.parse(ct).payload)
-      } catch {
-        return null
-      }
-    },
-    [],
-  )
+  const peekFingerprint = useCallback(async (gistId: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      })
+      if (!res.ok) return null
+      const body: { files?: Record<string, { content?: string }> } = await res.json()
+      const raw = body.files?.[FILENAME]?.content
+      if (!raw) return null
+      const outer: { payload?: { ct?: string } } = JSON.parse(raw)
+      if (!outer?.payload?.ct) return null
+      const { fingerprint } = await import('@/lib/crypto')
+      return fingerprint(outer.payload as never)
+    } catch {
+      return null
+    }
+  }, [])
 
   const disconnect = useCallback(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     passwordRef.current = null
     pendingEntries.current = null
-    ++abortedRef.current
+    ++cancelledRef.current
     setMeta(null)
     setStatus('idle')
   }, [])
@@ -204,11 +179,11 @@ export function useSync(): UseSyncReturn {
     status,
     lastError,
     hasPassword: passwordRef.current !== null,
-    connect,
     create,
-    tryLoad,
+    load,
+    scheduleSave,
+    flushSave,
     peekFingerprint,
     disconnect,
-    scheduleSave,
   }
 }

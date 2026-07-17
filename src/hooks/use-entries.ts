@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { deleteEntry, getAllEntries, putEntry } from '@/lib/db'
+import { deleteEntry, getAllEntries, putEntry, resetEntries } from '@/lib/db'
 import type { Entry } from '@/types'
 
 const byPeriodDesc = (a: Entry, b: Entry) => b.year - a.year || b.month - a.month
 
 export interface UseEntriesOptions {
-  // Invocado após cada mutação (salvar/remover/importar) com a nova lista
-  // ordenada. Usado pra enfileirar sync com a nuvem, por exemplo.
+  // Invocado após cada mutação (salvar/remover/importar/resetar) com a nova
+  // lista ordenada. Usado pra enfileirar sync com a nuvem, por exemplo.
   onChange?: (entries: Entry[]) => void
 }
 
@@ -55,5 +55,14 @@ export function useEntries(options: UseEntriesOptions = {}) {
     onChange?.(next)
   }
 
-  return { entries, saveEntry, removeEntry, importEntries }
+  // Substitui tudo: apaga o state local e carrega as entries dadas. Usado ao
+  // abrir um backup ou recarregar da nuvem.
+  async function resetTo(list: Entry[]) {
+    await resetEntries(list)
+    const next = [...list].sort(byPeriodDesc)
+    setEntries(next)
+    onChange?.(next)
+  }
+
+  return { entries, saveEntry, removeEntry, importEntries, resetTo }
 }
