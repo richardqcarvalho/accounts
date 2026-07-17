@@ -27,9 +27,9 @@ import type { Entry } from '@/types'
 
 interface SyncButtonProps {
   sync: UseSyncReturn
-  // Current local entries — usados pra popular um Gist novo sem roundtrip extra.
+  // Current local entries — enviados na criação do Gist pra evitar roundtrip.
   localEntries: Entry[]
-  // Callback pra carregar entries da nuvem no state local (replacement, não merge).
+  // Callback pra carregar entries da nuvem no state local (replacement).
   onLoadFromCloud?: (entries: Entry[]) => void
 }
 
@@ -71,19 +71,15 @@ export function SyncButton({
     try {
       // Cria Gist já com as entries locais (evita 2ª write).
       const { url } = await sync.create(password, localEntries)
-      // Empurra o snapshot via flush pra sincronizar fingerprint visual do Gist.
-      try {
-        await sync.flushSave(localEntries)
-      } catch {
-        // ignore — save agendado via scheduleSave mesmo assim
-      }
       toast.success('Gist criado com backup local', {
         description: `URL: ${url}`,
         duration: 8000,
       })
+      // Copia URL pro clipboard, se possível.
+      navigator.clipboard?.writeText(url)?.catch(() => {})
       setOpen(false)
     } catch {
-      // erro já registrado no hook
+      // erro já registrado no hook e mostrado via lastError no UI
     }
   }
 
@@ -92,7 +88,6 @@ export function SyncButton({
       toast.error('Insira o ID do Gist')
       return
     }
-    // Normaliza: aceita URL completa ou só ID.
     const cleanId = gistId.includes('gist.github.com')
       ? gistId.split('/').pop() ?? gistId
       : gistId.trim()
@@ -259,9 +254,10 @@ export function SyncButton({
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
-                {sync.lastError && (sync.status === 'loading' || sync.status === 'error') && (
-                  <div className="text-sm text-destructive">{sync.lastError}</div>
-                )}
+                {sync.lastError &&
+                  (sync.status === 'loading' || sync.status === 'error') && (
+                    <div className="text-sm text-destructive">{sync.lastError}</div>
+                  )}
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setStep('menu')}>
