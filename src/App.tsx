@@ -28,8 +28,10 @@ import { MonthSummary } from '@/components/month-summary'
 import type { SummaryItem } from '@/components/month-summary'
 import { MonthTabs } from '@/components/month-tabs'
 import { PersonalDetail } from '@/components/personal-detail'
+import { SyncButton } from '@/components/sync-button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useEntries } from '@/hooks/use-entries'
+import { useSync } from '@/hooks/use-sync'
 import { useTheme } from '@/hooks/use-theme'
 import { buildMonthlyGroups } from '@/lib/grouping'
 import { buildPersonalGroups } from '@/lib/personal'
@@ -47,7 +49,10 @@ import type {
 const keyOf = (x: { year: number; month: number }) => `${x.year}-${x.month}`
 
 function App() {
-  const { entries, saveEntry, removeEntry, importEntries } = useEntries()
+  const sync = useSync()
+  const { entries, saveEntry, removeEntry, importEntries } = useEntries({
+    onChange: (next) => sync.scheduleSave(next),
+  })
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [entity, setEntity] = useState<Entity>('pf')
   const [editing, setEditing] = useState<Entry | null>(null)
@@ -282,6 +287,7 @@ function App() {
             <h1 className="text-2xl font-semibold">Lançamentos</h1>
             <div className="flex flex-wrap gap-2">
               <ThemeToggle theme={theme} setTheme={setTheme} />
+              <SyncButton sync={sync} onLoadFromCloud={importEntries} />
               <BackupButtons entries={entries} onImport={importEntries} />
               <Button onClick={openNew}>
                 <Plus className="size-4" />

@@ -4,25 +4,44 @@ import type { Entry } from '@/types'
 
 const byPeriodDesc = (a: Entry, b: Entry) => b.year - a.year || b.month - a.month
 
+export interface UseEntriesOptions {
+  // Invocado após cada mutação (salvar/remover/importar) com a nova lista
+  // ordenada. Usado pra enfileirar sync com a nuvem, por exemplo.
+  onChange?: (entries: Entry[]) => void
+}
+
 // Estado dos lançamentos com persistência no IndexedDB. Mantém a lista sempre
 // ordenada do período mais recente para o mais antigo.
-export function useEntries() {
+export function useEntries(options: UseEntriesOptions = {}) {
   const [entries, setEntries] = useState<Entry[]>([])
+  const { onChange } = options
 
   useEffect(() => {
-    getAllEntries().then((stored) => setEntries([...stored].sort(byPeriodDesc)))
+    getAllEntries().then((stored) => {
+      const sorted = [...stored].sort(byPeriodDesc)
+      setEntries(sorted)
+      onChange?.(sorted)
+    })
   }, [])
 
   async function saveEntry(entry: Entry) {
     await putEntry(entry)
-    setEntries((prev) =>
-      [...prev.filter((e) => e.key !== entry.key), entry].sort(byPeriodDesc),
-    )
+    setEntries((prev) => {
+      const next = [...prev.filter((e) => e.key !== entry.key), entry].sort(
+        byPeriodDesc,
+      )
+      onChange?.(next)
+      return next
+    })
   }
 
   async function removeEntry(key: string) {
     await deleteEntry(key)
-    setEntries((prev) => prev.filter((e) => e.key !== key))
+    setEntries((prev) => {
+      const next = prev.filter((e) => e.key !== key)
+      onChange?.(next)
+      return next
+    })
   }
 
   // Insere/atualiza os lançamentos por key (merge — não apaga os existentes).
@@ -31,7 +50,9 @@ export function useEntries() {
       await putEntry(entry)
     }
     const stored = await getAllEntries()
-    setEntries([...stored].sort(byPeriodDesc))
+    const next = [...stored].sort(byPeriodDesc)
+    setEntries(next)
+    onChange?.(next)
   }
 
   return { entries, saveEntry, removeEntry, importEntries }
