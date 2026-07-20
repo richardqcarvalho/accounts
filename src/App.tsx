@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Toaster } from '@/components/ui/sonner'
-import { BackupButtons } from '@/components/backup-buttons'
 import { EntitySwitch } from '@/components/entity-switch'
 import { EntryForm } from '@/components/entry-form'
 import { FatorRCard } from '@/components/fator-r-card'
@@ -29,8 +29,8 @@ import type { SummaryItem } from '@/components/month-summary'
 import { MonthTabs } from '@/components/month-tabs'
 import { LoginScreen } from '@/components/login-screen'
 import { PersonalDetail } from '@/components/personal-detail'
-import { SyncButton } from '@/components/sync-button'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { ProfileMenu } from '@/components/profile-menu'
+import { SyncIndicator } from '@/components/sync-indicator'
 import { useAuth } from '@/hooks/use-auth'
 import { useEntries } from '@/hooks/use-entries'
 import { useSync } from '@/hooks/use-sync'
@@ -53,7 +53,7 @@ const keyOf = (x: { year: number; month: number }) => `${x.year}-${x.month}`
 function App() {
   const auth = useAuth()
   const sync = useSync({ userId: auth.user?.id ?? null })
-  const { entries, saveEntry, removeEntry, importEntries, resetTo } =
+  const { entries, saveEntry, removeEntry, resetTo } =
     useEntries({
       onUpsert: (entry) => sync.syncUpsert(entry),
       onDelete: (key) => sync.syncDelete(key),
@@ -87,6 +87,22 @@ function App() {
         // erro já exibido via sync.lastError; mantém o cache local
       })
   }, [auth.user?.id, sync, resetTo])
+
+  // Pull manual (botão "Sincronizar agora" no menu de perfil): rebaixa o
+  // estado da nuvem sobre o local. Útil quando editou noutro dispositivo.
+  function syncNow() {
+    sync
+      .pull()
+      .then((remote) => {
+        resetTo(remote)
+        toast.success(`Sincronizado — ${remote.length} lançamento(s)`)
+      })
+      .catch((err) => {
+        toast.error('Falha ao sincronizar', {
+          description: err instanceof Error ? err.message : String(err),
+        })
+      })
+  }
 
   const pjGroups = useMemo(
     () => buildMonthlyGroups(entries.filter((e) => e.entity === 'pj')),
@@ -326,25 +342,30 @@ function App() {
 
   return (
     <div className="min-h-screen bg-muted/40 text-foreground">
-      <main className="mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-2xl font-semibold">Lançamentos</h1>
-            <div className="flex flex-wrap gap-2">
-              <ThemeToggle theme={theme} setTheme={setTheme} />
-              <SyncButton
-                auth={auth}
-                sync={sync}
-                localEntries={entries}
-                onLoadFromCloud={resetTo}
-              />
-              <BackupButtons entries={entries} onImport={importEntries} />
-              <Button onClick={openNew}>
-                <Plus className="size-4" />
-                Novo lançamento
-              </Button>
-            </div>
+      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+          <h1 className="text-lg font-semibold">Lançamentos</h1>
+          <div className="flex items-center gap-2">
+            <SyncIndicator status={sync.status} />
+            <Button onClick={openNew} size="icon" aria-label="Novo lançamento">
+              <Plus className="size-4" />
+            </Button>
+            <ProfileMenu
+              auth={auth}
+              theme={theme}
+              setTheme={setTheme}
+              syncStatus={sync.status}
+              onSyncNow={syncNow}
+              onSignOut={() => {
+                auth.signOut().catch(() => {})
+              }}
+            />
           </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-3xl px-4 py-8">
+        <div className="mb-6">
           <EntitySwitch value={entity} onChange={setEntity} />
         </div>
 

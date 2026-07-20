@@ -10,6 +10,7 @@
 // vez logando numa máquina nova).
 
 import { useCallback, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import {
   fetchRemoteEntries,
   replaceRemoteEntries,
@@ -64,8 +65,12 @@ export function useSync({ userId }: UseSyncOptions): UseSyncReturn {
       for (const key of deletes) await deleteRemoteEntry(key)
       setStatus('ok')
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setLastError(msg)
       setStatus('error')
+      toast.error('Falha ao sincronizar — alterações salvas localmente', {
+        description: msg,
+      })
     }
   }, [userId])
 

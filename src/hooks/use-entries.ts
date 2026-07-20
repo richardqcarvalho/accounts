@@ -37,22 +37,12 @@ export function useEntries(options: UseEntriesOptions = {}) {
     onDelete?.(key)
   }
 
-  // Insere/atualiza os lançamentos por key (merge — não apaga os existentes).
-  async function importEntries(list: Entry[]) {
-    for (const entry of list) {
-      await putEntry(entry)
-      onUpsert?.(entry)
-    }
-    const stored = await getAllEntries()
-    setEntries([...stored].sort(byPeriodDesc))
-  }
-
   // Substitui tudo: apaga o state local e carrega as entries dadas. Usado ao
-  // abrir um backup ou puxar da nuvem. Não dispara sync (a origem é a nuvem).
+  // puxar da nuvem. Não dispara sync (a origem é a nuvem).
   async function resetTo(list: Entry[]) {
     await resetEntries(list)
     setEntries([...list].sort(byPeriodDesc))
   }
 
-  return { entries, saveEntry, removeEntry, importEntries, resetTo }
+  return { entries, saveEntry, removeEntry, resetTo }
 }
