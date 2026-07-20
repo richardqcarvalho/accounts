@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, Plus } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,9 +27,11 @@ import { MonthDetail } from '@/components/month-detail'
 import { MonthSummary } from '@/components/month-summary'
 import type { SummaryItem } from '@/components/month-summary'
 import { MonthTabs } from '@/components/month-tabs'
+import { LoginScreen } from '@/components/login-screen'
 import { PersonalDetail } from '@/components/personal-detail'
 import { SyncButton } from '@/components/sync-button'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useAuth } from '@/hooks/use-auth'
 import { useEntries } from '@/hooks/use-entries'
 import { useSync } from '@/hooks/use-sync'
 import { useTheme } from '@/hooks/use-theme'
@@ -49,10 +51,13 @@ import type {
 const keyOf = (x: { year: number; month: number }) => `${x.year}-${x.month}`
 
 function App() {
-  const sync = useSync()
-  const { entries, saveEntry, removeEntry, importEntries, resetTo } = useEntries({
-    onChange: (next) => sync.scheduleSave(next),
-  })
+  const auth = useAuth()
+  const sync = useSync({ userId: auth.user?.id ?? null })
+  const { entries, saveEntry, removeEntry, importEntries, resetTo } =
+    useEntries({
+      onUpsert: (entry) => sync.syncUpsert(entry),
+      onDelete: (key) => sync.syncDelete(key),
+    })
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [entity, setEntity] = useState<Entity>('pf')
   const [editing, setEditing] = useState<Entry | null>(null)
@@ -67,6 +72,21 @@ function App() {
     entry: Entry
     occurrence: DescontoOccurrence
   } | null>(null)
+
+  // Ao logar, puxa a nuvem uma vez (fonte da verdade inicial = remoto).
+  // O ref evita repuxar a cada render enquanto a sessão continua a mesma.
+  const pulledForUser = useRef<string | null>(null)
+  useEffect(() => {
+    const uid = auth.user?.id
+    if (!uid || pulledForUser.current === uid) return
+    pulledForUser.current = uid
+    sync
+      .pull()
+      .then((remote) => resetTo(remote))
+      .catch(() => {
+        // erro já exibido via sync.lastError; mantém o cache local
+      })
+  }, [auth.user?.id, sync, resetTo])
 
   const pjGroups = useMemo(
     () => buildMonthlyGroups(entries.filter((e) => e.entity === 'pj')),
@@ -279,6 +299,31 @@ function App() {
     setPendingDelete(null)
   }
 
+  // Gate de autenticação: enquanto carrega, spinner; deslogado, tela de login.
+  if (auth.status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/40">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (auth.status === 'signed-out') {
+    return (
+      <>
+        <LoginScreen
+          onLogin={() => {
+            auth.signInWithGitHub().catch(() => {
+              // erro exibido via toast pelo próprio SyncButton normalmente,
+              // mas aqui garantimos feedback também
+            })
+          }}
+        />
+        <Toaster theme={resolvedTheme} richColors position="top-center" />
+      </>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-muted/40 text-foreground">
       <main className="mx-auto max-w-3xl px-4 py-8">
@@ -287,7 +332,12 @@ function App() {
             <h1 className="text-2xl font-semibold">Lançamentos</h1>
             <div className="flex flex-wrap gap-2">
               <ThemeToggle theme={theme} setTheme={setTheme} />
-              <SyncButton sync={sync} localEntries={entries} onLoadFromCloud={resetTo} />
+              <SyncButton
+                auth={auth}
+                sync={sync}
+                localEntries={entries}
+                onLoadFromCloud={resetTo}
+              />
               <BackupButtons entries={entries} onImport={importEntries} />
               <Button onClick={openNew}>
                 <Plus className="size-4" />

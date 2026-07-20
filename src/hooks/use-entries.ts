@@ -5,63 +5,53 @@ import type { Entry } from '@/types'
 const byPeriodDesc = (a: Entry, b: Entry) => b.year - a.year || b.month - a.month
 
 export interface UseEntriesOptions {
-  // Invocado após cada mutação (salvar/remover/importar/resetar) com a nova
-  // lista ordenada. Usado pra enfileirar sync com a nuvem, por exemplo.
-  onChange?: (entries: Entry[]) => void
+  // Chamado quando uma entry é criada/editada — pra sincronizar com a nuvem.
+  onUpsert?: (entry: Entry) => void
+  // Chamado quando uma entry é removida.
+  onDelete?: (key: string) => void
 }
 
 // Estado dos lançamentos com persistência no IndexedDB. Mantém a lista sempre
 // ordenada do período mais recente para o mais antigo.
 export function useEntries(options: UseEntriesOptions = {}) {
   const [entries, setEntries] = useState<Entry[]>([])
-  const { onChange } = options
+  const { onUpsert, onDelete } = options
 
   useEffect(() => {
     getAllEntries().then((stored) => {
-      const sorted = [...stored].sort(byPeriodDesc)
-      setEntries(sorted)
-      onChange?.(sorted)
+      setEntries([...stored].sort(byPeriodDesc))
     })
   }, [])
 
   async function saveEntry(entry: Entry) {
     await putEntry(entry)
-    setEntries((prev) => {
-      const next = [...prev.filter((e) => e.key !== entry.key), entry].sort(
-        byPeriodDesc,
-      )
-      onChange?.(next)
-      return next
-    })
+    setEntries((prev) =>
+      [...prev.filter((e) => e.key !== entry.key), entry].sort(byPeriodDesc),
+    )
+    onUpsert?.(entry)
   }
 
   async function removeEntry(key: string) {
     await deleteEntry(key)
-    setEntries((prev) => {
-      const next = prev.filter((e) => e.key !== key)
-      onChange?.(next)
-      return next
-    })
+    setEntries((prev) => prev.filter((e) => e.key !== key))
+    onDelete?.(key)
   }
 
   // Insere/atualiza os lançamentos por key (merge — não apaga os existentes).
   async function importEntries(list: Entry[]) {
     for (const entry of list) {
       await putEntry(entry)
+      onUpsert?.(entry)
     }
     const stored = await getAllEntries()
-    const next = [...stored].sort(byPeriodDesc)
-    setEntries(next)
-    onChange?.(next)
+    setEntries([...stored].sort(byPeriodDesc))
   }
 
   // Substitui tudo: apaga o state local e carrega as entries dadas. Usado ao
-  // abrir um backup ou recarregar da nuvem.
+  // abrir um backup ou puxar da nuvem. Não dispara sync (a origem é a nuvem).
   async function resetTo(list: Entry[]) {
     await resetEntries(list)
-    const next = [...list].sort(byPeriodDesc)
-    setEntries(next)
-    onChange?.(next)
+    setEntries([...list].sort(byPeriodDesc))
   }
 
   return { entries, saveEntry, removeEntry, importEntries, resetTo }

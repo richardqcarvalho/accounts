@@ -1,189 +1,130 @@
-// Hook que orquestra a sincronização (criar, carregar, salvar) do Gist.
+// Hook de sincronização com o Supabase.
 //
-// A senha fica viva apenas na sessão (variável em memória, nunca persiste).
-// A cada mudança em `entries` o hook agenda uma sincronização debounced de
-// ~2 s: tempo de escrever várias coisas em série sem martelar o GitHub API.
+// Estratégia: o IndexedDB local continua sendo o cache rápido/offline. Quando
+// há sessão, cada mutação também é enviada ao Supabase (upsert individual, com
+// debounce). O usuário pode puxar (pull) o estado da nuvem ou empurrar (push)
+// o estado local inteiro.
+//
+// Não faz merge automático sofisticado: pull substitui o local, push substitui
+// o remoto. O usuário decide a direção quando os dois divergem (ex.: primeira
+// vez logando numa máquina nova).
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
-  createGist,
-  loadGist,
-  saveGist,
-  type LoadedGist,
-} from '@/lib/sync'
-import {
-  clearSyncMeta,
-  loadSyncMeta,
-  saveSyncMeta,
-  type SyncMeta,
-} from '@/lib/sync-storage'
+  fetchRemoteEntries,
+  replaceRemoteEntries,
+  upsertRemoteEntry,
+  deleteRemoteEntry,
+} from '@/lib/remote-entries'
 import type { Entry } from '@/types'
 
-export type SyncStatus =
-  | 'idle'
-  | 'connecting'
-  | 'creating'
-  | 'saving'
-  | 'loading'
-  | 'ok'
-  | 'error'
+export type SyncStatus = 'idle' | 'syncing' | 'ok' | 'error'
 
-export interface UseSyncReturn {
-  meta: SyncMeta | null
-  status: SyncStatus
-  lastError: string | null
-  hasPassword: boolean
-  create: (password: string, initialEntries?: Entry[]) => Promise<{ id: string; url: string }>
-  load: (gistId: string, password: string) => Promise<LoadedGist>
-  scheduleSave: (entries: Entry[]) => void
-  flushSave: (entries: Entry[]) => Promise<void>
-  peekFingerprint: (gistId: string) => Promise<string | null>
-  disconnect: () => void
+export interface UseSyncOptions {
+  // ID do usuário logado (null quando deslogado). Sem ele, as operações
+  // remotas viram no-ops — o app funciona só com o cache local.
+  userId: string | null
 }
 
-const DEBOUNCE_MS = 2000
-const FILENAME = 'accounts.json'
+export interface UseSyncReturn {
+  status: SyncStatus
+  lastError: string | null
+  // Puxa todas as entries da nuvem (fonte da verdade = remoto).
+  pull: () => Promise<Entry[]>
+  // Empurra o estado local inteiro pra nuvem (fonte da verdade = local).
+  push: (entries: Entry[]) => Promise<void>
+  // Sincroniza uma única mutação (upsert) com debounce.
+  syncUpsert: (entry: Entry) => void
+  // Sincroniza uma remoção.
+  syncDelete: (key: string) => void
+}
 
-export function useSync(initialId?: string): UseSyncReturn {
-  const [meta, setMeta] = useState<SyncMeta | null>(() => {
-    const stored = loadSyncMeta()
-    if (stored) return stored
-    if (initialId) {
-      const m: SyncMeta = { gistId: initialId, url: `https://gist.github.com/${initialId}`, fingerprint: null }
-      saveSyncMeta(m)
-      return m
-    }
-    return null
-  })
+const DEBOUNCE_MS = 800
+
+export function useSync({ userId }: UseSyncOptions): UseSyncReturn {
   const [status, setStatus] = useState<SyncStatus>('idle')
   const [lastError, setLastError] = useState<string | null>(null)
-  const passwordRef = useRef<string | null>(null)
-  const pendingEntries = useRef<Entry[] | null>(null)
+  // Fila de upserts pendentes por key (dedup: só o último valor importa).
+  const pendingUpserts = useRef<Map<string, Entry>>(new Map())
+  const pendingDeletes = useRef<Set<string>>(new Set())
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const cancelledRef = useRef(0)
 
-  // Quando meta muda, persiste/clear.
-  useEffect(() => {
-    if (meta) saveSyncMeta(meta)
-    else clearSyncMeta()
-  }, [meta?.gistId])
+  const flush = useCallback(async () => {
+    if (!userId) return
+    const upserts = [...pendingUpserts.current.values()]
+    const deletes = [...pendingDeletes.current]
+    pendingUpserts.current.clear()
+    pendingDeletes.current.clear()
+    if (upserts.length === 0 && deletes.length === 0) return
 
-  // Debounced save: agenda. Um ticket (cancelledRef) cancela saves antigos.
-  const scheduleSave = useCallback((entries: Entry[]) => {
-    if (!meta?.gistId || !passwordRef.current) return
+    setStatus('syncing')
+    setLastError(null)
+    try {
+      for (const entry of upserts) await upsertRemoteEntry(userId, entry)
+      for (const key of deletes) await deleteRemoteEntry(key)
+      setStatus('ok')
+    } catch (err) {
+      setLastError(err instanceof Error ? err.message : String(err))
+      setStatus('error')
+    }
+  }, [userId])
+
+  const schedule = useCallback(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    pendingEntries.current = entries
-    const ticket = ++cancelledRef.current
-    debounceTimer.current = setTimeout(() => {
-      if (ticket !== cancelledRef.current) return
-      const list = pendingEntries.current
-      const pwd = passwordRef.current
-      if (!list || !pwd || !meta.gistId) return
-      setStatus('saving')
+    debounceTimer.current = setTimeout(() => void flush(), DEBOUNCE_MS)
+  }, [flush])
+
+  const syncUpsert = useCallback(
+    (entry: Entry) => {
+      if (!userId) return
+      pendingDeletes.current.delete(entry.key)
+      pendingUpserts.current.set(entry.key, entry)
+      schedule()
+    },
+    [userId, schedule],
+  )
+
+  const syncDelete = useCallback(
+    (key: string) => {
+      if (!userId) return
+      pendingUpserts.current.delete(key)
+      pendingDeletes.current.add(key)
+      schedule()
+    },
+    [userId, schedule],
+  )
+
+  const pull = useCallback(async (): Promise<Entry[]> => {
+    if (!userId) throw new Error('Não autenticado')
+    setStatus('syncing')
+    setLastError(null)
+    try {
+      const entries = await fetchRemoteEntries()
+      setStatus('ok')
+      return entries
+    } catch (err) {
+      setLastError(err instanceof Error ? err.message : String(err))
+      setStatus('error')
+      throw err
+    }
+  }, [userId])
+
+  const push = useCallback(
+    async (entries: Entry[]) => {
+      if (!userId) throw new Error('Não autenticado')
+      setStatus('syncing')
       setLastError(null)
-      saveGist(meta.gistId, pwd, list)
-        .then(() => {
-          setMeta((m) => (m ? { ...m, fingerprint: null } : m))
-          setStatus('ok')
-        })
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          setLastError(msg)
-          setStatus('error')
-        })
-    }, DEBOUNCE_MS)
-  }, [meta?.gistId])
+      try {
+        await replaceRemoteEntries(userId, entries)
+        setStatus('ok')
+      } catch (err) {
+        setLastError(err instanceof Error ? err.message : String(err))
+        setStatus('error')
+        throw err
+      }
+    },
+    [userId],
+  )
 
-  const flushSave = useCallback(async (entries: Entry[]) => {
-    if (!meta?.gistId || !passwordRef.current) return
-    setStatus('saving')
-    setLastError(null)
-    try {
-      await saveGist(meta.gistId, passwordRef.current, entries)
-      setMeta((m) => (m ? { ...m, fingerprint: null } : m))
-      setStatus('ok')
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setLastError(msg)
-      setStatus('error')
-      throw err
-    }
-  }, [meta?.gistId])
-
-  const create = useCallback(async (password: string, initialEntries: Entry[] = []) => {
-    setStatus('creating')
-    setLastError(null)
-    try {
-      const { id, url } = await createGist(password, initialEntries)
-      passwordRef.current = password
-      setMeta({ gistId: id, url, fingerprint: null })
-      setStatus('ok')
-      return { id, url }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setLastError(msg)
-      setStatus('error')
-      throw err
-    }
-  }, [])
-
-  const load = useCallback(async (gistId: string, password: string): Promise<LoadedGist> => {
-    setStatus('loading')
-    setLastError(null)
-    try {
-      const loaded = await loadGist(gistId, password)
-      passwordRef.current = password
-      setMeta({ gistId, url: `https://gist.github.com/${gistId}`, fingerprint: loaded.fingerprint })
-      setStatus('ok')
-      return loaded
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setLastError(msg)
-      setStatus('error')
-      throw err
-    }
-  }, [])
-
-  const peekFingerprint = useCallback(async (gistId: string): Promise<string | null> => {
-    try {
-      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-      })
-      if (!res.ok) return null
-      const body: { files?: Record<string, { content?: string }> } = await res.json()
-      const raw = body.files?.[FILENAME]?.content
-      if (!raw) return null
-      const outer: { payload?: { ct?: string } } = JSON.parse(raw)
-      if (!outer?.payload?.ct) return null
-      const { fingerprint } = await import('@/lib/crypto')
-      return fingerprint(outer.payload as never)
-    } catch {
-      return null
-    }
-  }, [])
-
-  const disconnect = useCallback(() => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    passwordRef.current = null
-    pendingEntries.current = null
-    ++cancelledRef.current
-    setMeta(null)
-    setStatus('idle')
-  }, [])
-
-  return {
-    meta,
-    status,
-    lastError,
-    hasPassword: passwordRef.current !== null,
-    create,
-    load,
-    scheduleSave,
-    flushSave,
-    peekFingerprint,
-    disconnect,
-  }
+  return { status, lastError, pull, push, syncUpsert, syncDelete }
 }
